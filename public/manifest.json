@@ -1,0 +1,26 @@
+{
+  "name": "סורק חשבוניות",
+  "short_name": "חשבוניות",
+  "description": "סריקת חשבוניות וקליטת מוצרים לקופה",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1a1f2e",
+  "background_color": "#f5ecd9",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%231a1f2e'/%3E%3Cpath d='M58 54h76v84L116 122l-20 16-20-16-18 16z' fill='%23fcd34d'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%231a1f2e'/%3E%3Cpath d='M154 144h204v224l-48-42-54 42-54-42-48 42z' fill='%23fcd34d'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

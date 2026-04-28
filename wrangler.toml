@@ -1,0 +1,20 @@
+name = "invoice-scanner"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+# ============================================================
+# D1 Database binding
+# Create the DB:   wrangler d1 create invoice-scanner-db
+# Then paste the database_id below.
+# ============================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "invoice-scanner-db"
+database_id = "PASTE_YOUR_DATABASE_ID_HERE"
+
+# ============================================================
+# Secrets (DO NOT commit these — set with `wrangler pages secret put NAME`)
+#   ANTHROPIC_API_KEY  – your Claude API key
+#   SESSION_SECRET     – random 32+ char string for signing cookies
+#   SYNC_API_KEY       – API key the desktop script uses
+# ============================================================

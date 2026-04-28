@@ -1,0 +1,17 @@
+{
+  "name": "invoice-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --d1 DB=invoice-scanner-db --local",
+    "deploy": "wrangler pages deploy public",
+    "db:init": "wrangler d1 execute invoice-scanner-db --remote --file=./schema.sql",
+    "db:init-local": "wrangler d1 execute invoice-scanner-db --local --file=./schema.sql",
+    "db:seed": "wrangler d1 execute invoice-scanner-db --remote --file=./seed.sql",
+    "db:console": "wrangler d1 execute invoice-scanner-db --remote --command",
+    "secrets:set": "wrangler pages secret put ANTHROPIC_API_KEY && wrangler pages secret put SESSION_SECRET && wrangler pages secret put SYNC_API_KEY"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

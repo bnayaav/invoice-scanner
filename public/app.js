@@ -1,0 +1,704 @@
+// ============================================================
+// Invoice Scanner — Frontend
+// ============================================================
+
+// ─── Globals ─────────────────────────────────────────────────
+let currentUser = null;
+let pages = [];                  // [{id, dataUrl, file, type}]
+let currentInvoice = null;       // {invoice, products}
+let activeTab = 'new';
+let historyFilter = { status: '', q: '' };
+
+// ─── Helpers ─────────────────────────────────────────────────
+const $  = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+const uuid = () => crypto.randomUUID();
+const fmt = (n, cur = '₪') => `${cur}${(Number(n) || 0).toFixed(0)}`;
+const currencySymbol = (c) => c === 'USD' ? '$' : c === 'EUR' ? '€' : '₪';
+
+const SVG = {
+  camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  sparkle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>`,
+  spinner: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`,
+  trending: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  receipt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h20l-2 18-8-3-8 3z"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+};
+
+const showLoading = (text) => { $('#loading-text').textContent = text; $('#loading-overlay').classList.remove('hidden'); };
+const hideLoading = () => $('#loading-overlay').classList.add('hidden');
+
+let toastTimer;
+const toast = (msg, type = '') => {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = `toast ${type}`;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 2400);
+};
+
+// ─── Image compression ──────────────────────────────────────
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return reject(new Error('compress failed'));
+        resolve({ blob, dataUrl: canvas.toDataURL('image/jpeg', quality), type: 'image/jpeg' });
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+const blobToBase64 = (blob) => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(r.result.split(',')[1]);
+  r.onerror = rej;
+  r.readAsDataURL(blob);
+});
+
+// ─── API client ─────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// ─── Auth flow ──────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/me');
+    const data = await res.json().catch(() => ({}));
+
+    if (data.setup_required) { showSetup(); return; }
+    if (!res.ok) { showLogin(); return; }
+
+    currentUser = data;
+    showApp();
+  } catch {
+    showLogin();
+  }
+}
+
+function showSetup() {
+  $('#setup').classList.remove('hidden');
+  $('#login').classList.add('hidden');
+  $('#app').classList.add('hidden');
+}
+
+function showLogin() {
+  $('#setup').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+  $('#app').classList.add('hidden');
+}
+
+function showApp() {
+  $('#setup').classList.add('hidden');
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  $('#user-greeting').textContent = `שלום, ${currentUser.display_name}`;
+  renderNewTab();
+}
+
+$('#setup-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errEl = $('#setup-error');
+  const btn = form.querySelector('.btn-primary');
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.querySelector('.btn-text').classList.add('hidden');
+  btn.querySelector('.btn-loader').classList.remove('hidden');
+  try {
+    currentUser = await api('/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: form.username.value.trim(),
+        display_name: form.display_name.value.trim(),
+        password: form.password.value
+      })
+    });
+    showApp();
+    form.reset();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-text').classList.remove('hidden');
+    btn.querySelector('.btn-loader').classList.add('hidden');
+  }
+});
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const username = form.username.value.trim();
+  const password = form.password.value;
+  const errEl = $('#login-error');
+  const btn = form.querySelector('.btn-primary');
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.querySelector('.btn-text').classList.add('hidden');
+  btn.querySelector('.btn-loader').classList.remove('hidden');
+  try {
+    currentUser = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    showApp();
+    form.reset();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-text').classList.remove('hidden');
+    btn.querySelector('.btn-loader').classList.add('hidden');
+  }
+});
+
+$('#logout-btn').addEventListener('click', async () => {
+  if (!confirm('להתנתק?')) return;
+  try { await api('/api/logout', { method: 'POST' }); } catch {}
+  currentUser = null;
+  pages = []; currentInvoice = null;
+  showLogin();
+});
+
+// ─── Tab switching ──────────────────────────────────────────
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  activeTab = t.dataset.tab;
+  $$('.tab').forEach(x => x.classList.toggle('active', x === t));
+  $$('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${activeTab}`)
+  );
+  if (activeTab === 'history') loadHistory();
+  if (activeTab === 'new' && !currentInvoice) renderNewTab();
+}));
+
+// ─── New invoice — initial state / page upload ──────────────
+function renderNewTab() {
+  if (currentInvoice) {
+    renderInvoiceEditor();
+    return;
+  }
+  const root = $('#new-content');
+  if (pages.length === 0) {
+    root.innerHTML = `
+      <div class="upload-card">
+        <div class="upload-icon">${SVG.file}</div>
+        <h2>חשבונית חדשה</h2>
+        <p>צלם או העלה את החשבונית — Claude יסרוק וימשוך את כל המוצרים ומחירי העלות</p>
+        <div class="upload-buttons">
+          <button class="btn-camera" id="btn-camera">${SVG.camera}<span>צלם</span></button>
+          <button class="btn-upload" id="btn-upload">${SVG.upload}<span>העלה</span></button>
+        </div>
+      </div>
+      <div id="scan-error"></div>
+    `;
+    $('#btn-camera').onclick = () => $('#camera-input').click();
+    $('#btn-upload').onclick = () => $('#file-input').click();
+  } else {
+    const thumbs = pages.map((p, i) => `
+      <div class="page-thumb" data-id="${p.id}">
+        <img src="${p.dataUrl}" alt="" />
+        <div class="page-num">${i + 1}</div>
+        <button class="page-remove" data-remove="${p.id}">${SVG.x}</button>
+      </div>
+    `).join('');
+    root.innerHTML = `
+      <div class="pages-section">
+        <div class="pages-header">
+          <div class="pages-count">
+            <span>${pages.length} ${pages.length === 1 ? 'עמוד' : 'עמודים'}</span>
+            <span class="badge">מוכן לסריקה</span>
+          </div>
+          <button class="add-page-btn" id="add-more">${SVG.plus} הוסף עמוד</button>
+        </div>
+        <div class="pages-grid">${thumbs}</div>
+        <button class="scan-btn" id="scan-btn">
+          ${SVG.sparkle}
+          <span>סרוק עם Claude</span>
+        </button>
+      </div>
+      <div id="scan-error"></div>
+    `;
+    $('#add-more').onclick = () => $('#file-input').click();
+    $('#scan-btn').onclick = scanInvoice;
+    $$('[data-remove]').forEach(btn => btn.onclick = () => {
+      pages = pages.filter(x => x.id !== btn.dataset.remove);
+      renderNewTab();
+    });
+  }
+}
+
+// File input handlers
+async function handleFiles(files) {
+  const list = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if (!list.length) return;
+  showLoading('דוחס תמונות...');
+  try {
+    for (const f of list) {
+      const { blob, dataUrl, type } = await compressImage(f);
+      pages.push({ id: uuid(), dataUrl, blob, type });
+    }
+    renderNewTab();
+  } catch (e) {
+    toast('שגיאה בעיבוד התמונה', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+$('#file-input').addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
+$('#camera-input').addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
+
+// ─── Scan ───────────────────────────────────────────────────
+async function scanInvoice() {
+  if (pages.length === 0) return;
+  $('#scan-error').innerHTML = '';
+  showLoading('Claude סורק את החשבונית...');
+  try {
+    const payload = [];
+    for (const p of pages) {
+      const data = await blobToBase64(p.blob);
+      payload.push({ media_type: p.type, data });
+    }
+    const result = await api('/api/scan', {
+      method: 'POST',
+      body: JSON.stringify({ pages: payload })
+    });
+    currentInvoice = result;
+    pages = [];
+    toast(`נמצאו ${result.products.length} מוצרים`, 'success');
+    renderInvoiceEditor();
+  } catch (e) {
+    $('#scan-error').innerHTML = `
+      <div class="alert-error">${SVG.alert}<span>${e.message}</span></div>
+    `;
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── Invoice editor ─────────────────────────────────────────
+function renderInvoiceEditor() {
+  const inv = currentInvoice.invoice;
+  const products = currentInvoice.products;
+  const cur = currencySymbol(inv.currency);
+  const filledCount = products.filter(p => Number(p.customer_price) > 0).length;
+  const isReadOnly = inv.status === 'imported';
+
+  const productCards = products.map((p, idx) => {
+    const cost = Number(p.cost_price) || 0;
+    const cust = Number(p.customer_price) || 0;
+    const hasPrice = cust > 0;
+    const markup = (cost > 0 && cust > 0) ? (((cust - cost) / cost) * 100).toFixed(0) : null;
+    const profit = cust - cost;
+    const isPositive = profit >= 0;
+
+    return `
+      <div class="product-card ${hasPrice ? 'has-price' : ''}" data-pid="${p.id}">
+        <div class="product-row1">
+          <div class="product-num">${idx + 1}</div>
+          <div class="product-fields">
+            <input class="product-name" data-field="name" value="${escapeAttr(p.name || '')}" placeholder="שם המוצר" ${isReadOnly ? 'readonly' : ''} />
+            <input class="product-model" data-field="model" value="${escapeAttr(p.model || '')}" placeholder="דגם / מק״ט" ${isReadOnly ? 'readonly' : ''} />
+          </div>
+          ${isReadOnly ? '' : `<button class="product-remove" data-remove="${p.id}">${SVG.trash}</button>`}
+        </div>
+        <div class="product-grid">
+          <div>
+            <label>כמות</label>
+            <input type="number" class="qty" data-field="quantity" value="${p.quantity || 1}" min="1" ${isReadOnly ? 'readonly' : ''} />
+          </div>
+          <div>
+            <label>עלות</label>
+            <div class="input-wrap">
+              <input type="number" step="0.01" class="has-currency" data-field="cost_price" value="${cost || ''}" ${isReadOnly ? 'readonly' : ''} />
+              <span class="currency-symbol">${cur}</span>
+            </div>
+          </div>
+          <div>
+            <label class="price-label">ללקוח</label>
+            <div class="input-wrap">
+              <input type="number" step="0.01" class="customer-price has-currency ${hasPrice ? 'filled' : ''}" data-field="customer_price" value="${cust || ''}" placeholder="0" ${isReadOnly ? 'readonly' : ''} />
+              <span class="currency-symbol amber">${cur}</span>
+            </div>
+          </div>
+        </div>
+        ${markup !== null ? `
+          <div class="product-markup">
+            <span class="label">רווח</span>
+            <span class="value ${isPositive ? 'positive' : 'negative'}">
+              ${SVG.trending}
+              ${markup}% · ${cur}${profit.toFixed(2)}
+            </span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  const totalCost = products.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
+  const totalRevenue = products.reduce((s, p) => s + (Number(p.customer_price) || 0) * (Number(p.quantity) || 1), 0);
+  const totalProfit = totalRevenue - totalCost;
+
+  $('#new-content').innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
+      <button class="icon-btn" id="back-to-upload">${SVG.back}</button>
+      <span style="font-size:12px; color:var(--muted);">
+        ${isReadOnly ? 'מצב צפייה (יובא)' : 'עריכת חשבונית'}
+        ${inv.status === 'ready' ? ' · מוכן לייבוא' : ''}
+      </span>
+    </div>
+
+    <div class="invoice-meta">
+      <div class="invoice-meta-label">חשבונית</div>
+      <input class="invoice-meta-input title" data-meta="supplier" value="${escapeAttr(inv.supplier || '')}" placeholder="שם הספק" ${isReadOnly ? 'readonly' : ''} />
+      <div class="invoice-meta-grid">
+        <div>
+          <div class="invoice-meta-label">מס׳ חשבונית</div>
+          <input class="invoice-meta-input" data-meta="invoice_number" value="${escapeAttr(inv.invoice_number || '')}" ${isReadOnly ? 'readonly' : ''} />
+        </div>
+        <div>
+          <div class="invoice-meta-label">תאריך</div>
+          <input class="invoice-meta-input" data-meta="invoice_date" value="${escapeAttr(inv.invoice_date || '')}" ${isReadOnly ? 'readonly' : ''} />
+        </div>
+      </div>
+    </div>
+
+    ${isReadOnly ? '' : `
+    <div class="bulk-card">
+      <div class="bulk-card-label">${SVG.percent}<span>החל אחוז רווח על כולם</span></div>
+      <div class="bulk-row">
+        <input type="number" id="bulk-markup" placeholder="לדוגמה 25" />
+        <button id="bulk-apply">החל</button>
+      </div>
+    </div>
+    `}
+
+    <div class="products-header">
+      <h3>מוצרים <span>· ${products.length}</span></h3>
+      <span class="meta-text">${filledCount} / ${products.length} עם מחיר</span>
+    </div>
+    <div class="products-list" id="products-list">${productCards}</div>
+    ${isReadOnly ? '' : `<button class="add-product-btn" id="add-product">${SVG.plus}<span>הוסף מוצר ידנית</span></button>`}
+
+    <div class="summary-bar">
+      <div class="summary-card">
+        <div class="summary-stats">
+          <div class="summary-stat"><div class="label">עלות</div><div class="value">${cur}${totalCost.toFixed(0)}</div></div>
+          <div class="summary-divider"></div>
+          <div class="summary-stat"><div class="label">מכירה</div><div class="value">${cur}${totalRevenue.toFixed(0)}</div></div>
+          <div class="summary-divider"></div>
+          <div class="summary-stat"><div class="label">רווח</div><div class="value ${totalProfit >= 0 ? 'positive' : 'negative'}">${cur}${totalProfit.toFixed(0)}</div></div>
+        </div>
+        <div class="summary-actions">
+          ${isReadOnly ? `
+            <button class="btn-summary secondary" id="back-list">חזור</button>
+          ` : (inv.status === 'ready' ? `
+            <button class="btn-summary secondary" id="save-draft">שמור</button>
+            <button class="btn-summary primary" id="back-list">${SVG.check} סגור</button>
+          ` : `
+            <button class="btn-summary secondary" id="save-draft">שמור</button>
+            <button class="btn-summary primary" id="mark-ready">${SVG.send} מוכן</button>
+          `)}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Wire up
+  $('#back-to-upload').onclick = async () => {
+    if (!isReadOnly && hasUnsavedEdits()) {
+      if (!confirm('לחזור בלי לשמור?')) return;
+    }
+    currentInvoice = null;
+    pages = [];
+    renderNewTab();
+  };
+
+  if (!isReadOnly) {
+    // Field updates
+    $$('[data-meta]').forEach(input => {
+      input.oninput = () => { currentInvoice.invoice[input.dataset.meta] = input.value; };
+    });
+    $$('.product-card').forEach(card => {
+      const pid = card.dataset.pid;
+      card.querySelectorAll('[data-field]').forEach(input => {
+        input.oninput = () => updateProductField(pid, input.dataset.field, input.value);
+      });
+      const rm = card.querySelector('[data-remove]');
+      if (rm) rm.onclick = () => removeProduct(pid);
+    });
+    $('#add-product').onclick = addProduct;
+    $('#bulk-apply').onclick = applyBulkMarkup;
+
+    $('#save-draft').onclick = () => saveInvoice('draft');
+    if ($('#mark-ready')) $('#mark-ready').onclick = () => saveInvoice('ready');
+  }
+
+  if ($('#back-list')) $('#back-list').onclick = () => {
+    currentInvoice = null;
+    activeTab = 'history';
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'history'));
+    $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-history'));
+    loadHistory();
+  };
+}
+
+function escapeAttr(s) {
+  return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+let dirty = false;
+function hasUnsavedEdits() { return dirty; }
+
+function updateProductField(pid, field, value) {
+  const p = currentInvoice.products.find(x => x.id === pid);
+  if (!p) return;
+  if (['quantity'].includes(field)) {
+    p[field] = parseInt(value) || 1;
+  } else if (['cost_price', 'customer_price'].includes(field)) {
+    p[field] = parseFloat(value) || 0;
+  } else {
+    p[field] = value;
+  }
+  dirty = true;
+
+  // Live update of UI for price-related fields
+  if (field === 'customer_price' || field === 'cost_price') {
+    refreshSummary();
+    refreshProductCard(pid);
+  }
+}
+
+function refreshSummary() {
+  const products = currentInvoice.products;
+  const cur = currencySymbol(currentInvoice.invoice.currency);
+  const totalCost = products.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
+  const totalRevenue = products.reduce((s, p) => s + (Number(p.customer_price) || 0) * (Number(p.quantity) || 1), 0);
+  const totalProfit = totalRevenue - totalCost;
+  const stats = $$('.summary-stat .value');
+  if (stats.length === 3) {
+    stats[0].textContent = `${cur}${totalCost.toFixed(0)}`;
+    stats[1].textContent = `${cur}${totalRevenue.toFixed(0)}`;
+    stats[2].textContent = `${cur}${totalProfit.toFixed(0)}`;
+    stats[2].classList.toggle('positive', totalProfit >= 0);
+    stats[2].classList.toggle('negative', totalProfit < 0);
+  }
+  const filledCount = products.filter(p => Number(p.customer_price) > 0).length;
+  const meta = $('.products-header .meta-text');
+  if (meta) meta.textContent = `${filledCount} / ${products.length} עם מחיר`;
+}
+
+function refreshProductCard(pid) {
+  const card = document.querySelector(`.product-card[data-pid="${pid}"]`);
+  if (!card) return;
+  const p = currentInvoice.products.find(x => x.id === pid);
+  const cur = currencySymbol(currentInvoice.invoice.currency);
+  const cost = Number(p.cost_price) || 0;
+  const cust = Number(p.customer_price) || 0;
+  const hasPrice = cust > 0;
+  card.classList.toggle('has-price', hasPrice);
+  const custInput = card.querySelector('.customer-price');
+  if (custInput) custInput.classList.toggle('filled', hasPrice);
+
+  // Update markup section
+  let markupEl = card.querySelector('.product-markup');
+  if (cost > 0 && cust > 0) {
+    const markup = (((cust - cost) / cost) * 100).toFixed(0);
+    const profit = cust - cost;
+    const isPositive = profit >= 0;
+    const html = `
+      <span class="label">רווח</span>
+      <span class="value ${isPositive ? 'positive' : 'negative'}">
+        ${SVG.trending}
+        ${markup}% · ${cur}${profit.toFixed(2)}
+      </span>
+    `;
+    if (markupEl) {
+      markupEl.innerHTML = html;
+    } else {
+      const div = document.createElement('div');
+      div.className = 'product-markup';
+      div.innerHTML = html;
+      card.appendChild(div);
+    }
+  } else if (markupEl) {
+    markupEl.remove();
+  }
+}
+
+function removeProduct(pid) {
+  currentInvoice.products = currentInvoice.products.filter(x => x.id !== pid);
+  dirty = true;
+  renderInvoiceEditor();
+}
+
+function addProduct() {
+  currentInvoice.products.push({
+    id: uuid(),
+    name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0
+  });
+  dirty = true;
+  renderInvoiceEditor();
+}
+
+function applyBulkMarkup() {
+  const pct = parseFloat($('#bulk-markup').value);
+  if (isNaN(pct)) return;
+  currentInvoice.products.forEach(p => {
+    p.customer_price = Math.round((Number(p.cost_price) || 0) * (1 + pct / 100));
+  });
+  dirty = true;
+  renderInvoiceEditor();
+  toast('עודכנו מחירים לכל המוצרים', 'success');
+}
+
+async function saveInvoice(targetStatus) {
+  showLoading('שומר...');
+  try {
+    const inv = currentInvoice.invoice;
+    const result = await api(`/api/invoices/${inv.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        supplier: inv.supplier,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        currency: inv.currency,
+        status: targetStatus,
+        products: currentInvoice.products
+      })
+    });
+    currentInvoice = result;
+    dirty = false;
+    toast(targetStatus === 'ready' ? 'נשמר וסומן כמוכן לייבוא' : 'נשמר', 'success');
+    renderInvoiceEditor();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── History tab ────────────────────────────────────────────
+let historyTimer;
+$('#history-search').addEventListener('input', (e) => {
+  historyFilter.q = e.target.value.trim();
+  clearTimeout(historyTimer);
+  historyTimer = setTimeout(loadHistory, 300);
+});
+$$('.pill').forEach(p => p.addEventListener('click', () => {
+  $$('.pill').forEach(x => x.classList.toggle('active', x === p));
+  historyFilter.status = p.dataset.status;
+  loadHistory();
+}));
+
+async function loadHistory() {
+  const list = $('#history-list');
+  list.innerHTML = '<div class="empty-state"><p>טוען...</p></div>';
+  try {
+    const params = new URLSearchParams();
+    if (historyFilter.status) params.set('status', historyFilter.status);
+    if (historyFilter.q) params.set('q', historyFilter.q);
+    const { invoices } = await api(`/api/invoices?${params}`);
+    if (!invoices.length) {
+      list.innerHTML = `
+        <div class="empty-state">
+          ${SVG.receipt}
+          <p>לא נמצאו חשבוניות${historyFilter.q ? ' תואמות' : ' עדיין'}</p>
+        </div>`;
+      return;
+    }
+    list.innerHTML = invoices.map(inv => {
+      const cur = currencySymbol(inv.currency);
+      const date = new Date(inv.created_at * 1000).toLocaleDateString('he-IL', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      });
+      const profit = (inv.total_revenue || 0) - (inv.total_cost || 0);
+      return `
+        <div class="history-card" data-id="${inv.id}">
+          <div class="history-card-top">
+            <div>
+              <div class="history-supplier">${escapeHtml(inv.supplier || '— ללא ספק —')}</div>
+              <div class="history-invoice-num">${inv.invoice_number ? '#' + escapeHtml(inv.invoice_number) : ''} ${inv.creator_name ? '· ' + escapeHtml(inv.creator_name) : ''}</div>
+            </div>
+            <span class="history-status status-${inv.status}">${statusLabel(inv.status)}</span>
+          </div>
+          <div class="history-card-bottom">
+            <div class="history-meta">
+              <span>${date}</span>
+              <span>${inv.product_count} פריטים</span>
+            </div>
+            <div class="history-totals">
+              ${cur}${(inv.total_cost || 0).toFixed(0)}
+              ${profit > 0 ? `<span class="green">+${cur}${profit.toFixed(0)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    $$('.history-card').forEach(card =>
+      card.onclick = () => openInvoice(card.dataset.id)
+    );
+  } catch (e) {
+    list.innerHTML = `<div class="alert-error">${SVG.alert}<span>${e.message}</span></div>`;
+  }
+}
+
+function statusLabel(s) {
+  return ({ draft: 'טיוטה', ready: 'מוכן', imported: 'יובא', archived: 'בארכיון' })[s] || s;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function openInvoice(id) {
+  showLoading('טוען חשבונית...');
+  try {
+    currentInvoice = await api(`/api/invoices/${id}`);
+    activeTab = 'new';
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'new'));
+    $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-new'));
+    dirty = false;
+    renderInvoiceEditor();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── Boot ───────────────────────────────────────────────────
+checkAuth();
