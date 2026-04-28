@@ -10,7 +10,7 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "invoice-scanner-db"
-database_id = "PASTE_YOUR_DATABASE_ID_HERE"
+database_id = "629fe08a-8f02-479a-a131-b791e7be8271"
 
 # ============================================================
 # Secrets (DO NOT commit these — set with `wrangler pages secret put NAME`)
