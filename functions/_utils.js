@@ -43,7 +43,7 @@ export function b64urlDecode(str) {
 // ────────────────────────────────────────────────────────────
 //  Password hashing (PBKDF2-SHA-256, 200k iterations)
 // ────────────────────────────────────────────────────────────
-const PBKDF2_ITERATIONS = 200_000;
+const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_KEY_LEN = 32;
 
 export async function hashPassword(password, saltOverride) {
