@@ -22,8 +22,13 @@ export async function onRequestPost({ request, env }) {
 
   await env.DB.prepare(
     `UPDATE invoices SET status = 'imported', imported_at = unixepoch(),
-     imported_by_script = ?, updated_at = unixepoch() WHERE id = ?`
+     imported_by_script = ?, error_message = NULL, failed_at = NULL,
+     updated_at = unixepoch() WHERE id = ?`
   ).bind(script_id || 'desktop-sync', invoice_id).run();
+
+  // Clear product error messages
+  await env.DB.prepare(`UPDATE products SET error_message = NULL WHERE invoice_id = ?`)
+    .bind(invoice_id).run();
 
   return json({ ok: true });
 }
