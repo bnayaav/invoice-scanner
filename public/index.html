@@ -159,6 +159,44 @@
   <!-- ─── Toast ─── -->
   <div id="toast" class="toast hidden"></div>
 
+  <!-- Install banner (shown when app is installable) -->
+  <div id="install-banner" class="install-banner hidden">
+    <div class="install-banner-content">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="2" width="14" height="20" rx="2"/>
+        <line x1="12" y1="18" x2="12.01" y2="18"/>
+      </svg>
+      <div class="install-banner-text">
+        <strong>התקן את האפליקציה</strong>
+        <p id="install-banner-hint">קבל גישה מהירה ממסך הבית</p>
+      </div>
+      <button id="install-btn" class="btn-primary">התקן</button>
+      <button id="install-dismiss" class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- iOS install instructions modal -->
+  <div id="ios-install-modal" class="modal-overlay hidden">
+    <div class="barcode-modal">
+      <div class="barcode-header">
+        <h3>התקנה באייפון</h3>
+        <button class="icon-btn" id="ios-install-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="padding: 20px;">
+        <ol style="padding-right: 20px; line-height: 2; font-size: 14px; color: var(--ink);">
+          <li>פתח את האתר בדפדפן <strong>Safari</strong></li>
+          <li>הקש על כפתור השיתוף בתחתית המסך</li>
+          <li>גלול ובחר <strong>"הוסף למסך הבית"</strong></li>
+          <li>הקש <strong>"הוסף"</strong></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
   <!-- File inputs (hidden, triggered programmatically) -->
   <input id="file-input" type="file" accept="image/*" multiple hidden />
   <input id="camera-input" type="file" accept="image/*" capture="environment" multiple hidden />
@@ -177,6 +215,7 @@
         <div class="barcode-frame"></div>
       </div>
       <p class="barcode-hint" id="barcode-status">מכוון את הברקוד למסגרת</p>
+      <p class="barcode-queue" id="barcode-queue-count"></p>
       <button class="btn-primary" id="barcode-manual">הזנה ידנית במקום</button>
     </div>
   </div>
