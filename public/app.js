@@ -10,6 +10,7 @@ let activeTab = 'new';
 let historyFilter = { status: '', q: '' };
 let categories = [];             // loaded once after login
 let suppliers = [];              // loaded once after login
+let suggestedGroups = [];        // groups detected by AI after scan
 let barcodeReader = null;        // ZXing reader instance
 let activeBarcodeProductId = null;
 
@@ -330,9 +331,14 @@ async function scanInvoice() {
       method: 'POST',
       body: JSON.stringify({ pages: payload })
     });
-    currentInvoice = result;
+    currentInvoice = { invoice: result.invoice, products: result.products };
+    suggestedGroups = result.suggested_groups || [];
     pages = [];
-    toast(`נמצאו ${result.products.length} מוצרים`, 'success');
+    if (suggestedGroups.length > 0) {
+      toast(`נמצאו ${result.products.length} מוצרים, ${suggestedGroups.length} קבוצות לאיחוד`, 'success');
+    } else {
+      toast(`נמצאו ${result.products.length} מוצרים`, 'success');
+    }
     renderInvoiceEditor();
   } catch (e) {
     $('#scan-error').innerHTML = `
@@ -351,16 +357,61 @@ function renderInvoiceEditor() {
   const filledCount = products.filter(p => Number(p.customer_price) > 0).length;
   const isReadOnly = inv.status === 'imported';
 
-  const productCards = products.map((p, idx) => {
+  // בנה מפת product_id → group_index לסימון מוצרים בקבוצה
+  const productToGroup = {};
+  suggestedGroups.forEach((g, gi) => {
+    g.product_ids.forEach(pid => { productToGroup[pid] = gi; });
+  });
+  // איזה מוצרים הם הראשונים בקבוצה (כדי להציג כרטיס פעם אחת לפני)
+  const firstInGroup = {};
+  suggestedGroups.forEach((g, gi) => {
+    if (g.product_ids[0]) firstInGroup[g.product_ids[0]] = gi;
+  });
+
+  let productCardsList = [];
+  products.forEach((p, idx) => {
+    const groupIdx = productToGroup[p.id];
+    const isFirstInGroup = firstInGroup[p.id] !== undefined;
+
+    // אם זה המוצר הראשון בקבוצה — הוסף כרטיס קבוצה לפניו
+    if (isFirstInGroup) {
+      const g = suggestedGroups[groupIdx];
+      const memberProducts = products.filter(prod => g.product_ids.includes(prod.id));
+      const totalQty = memberProducts.reduce((s, prod) => s + (Number(prod.quantity) || 1), 0);
+      const totalCost = memberProducts.reduce((s, prod) => s + (Number(prod.cost_price) || 0) * (Number(prod.quantity) || 1), 0);
+      const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
+
+      productCardsList.push(`
+        <div class="group-suggestion" data-gid="${groupIdx}">
+          <div class="group-suggestion-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <div class="group-suggestion-text">
+              <strong>AI זיהה אותו מוצר</strong>
+              <span>${escapeHtml(g.reason || 'מוצרים דומים')} · ${memberProducts.length} שורות → כמות ${totalQty} · עלות ${cur}${avgCost.toFixed(2)}</span>
+            </div>
+          </div>
+          ${isReadOnly ? '' : `
+          <div class="group-suggestion-actions">
+            <button class="btn-merge" data-merge-group="${groupIdx}">אחד</button>
+            <button class="btn-keep-separate" data-dismiss-group="${groupIdx}">השאר נפרד</button>
+          </div>
+          `}
+        </div>
+      `);
+    }
     const cost = Number(p.cost_price) || 0;
     const cust = Number(p.customer_price) || 0;
     const hasPrice = cust > 0;
     const markup = (cost > 0 && cust > 0) ? (((cust - cost) / cost) * 100).toFixed(0) : null;
     const profit = cust - cost;
     const isPositive = profit >= 0;
+    const inGroup = productToGroup[p.id] !== undefined;
 
-    return `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'}" data-pid="${p.id}">
+    const cardHtml = `
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''}" data-pid="${p.id}">
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
@@ -442,7 +493,9 @@ function renderInvoiceEditor() {
         </div>
       </div>
     `;
-  }).join('');
+    productCardsList.push(cardHtml);
+  });
+  const productCards = productCardsList.join('');
 
   const totalCost = products.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
   const totalRevenue = products.reduce((s, p) => s + (Number(p.customer_price) || 0) * (Number(p.quantity) || 1), 0);
@@ -534,6 +587,7 @@ function renderInvoiceEditor() {
       if (!confirm('לחזור בלי לשמור?')) return;
     }
     currentInvoice = null;
+    suggestedGroups = [];
     pages = [];
     renderNewTab();
   };
@@ -581,6 +635,14 @@ function renderInvoiceEditor() {
         toast('כל המוצרים סומנו כחדשים', 'success');
       };
     }
+
+    // Group merge / dismiss buttons
+    $$('[data-merge-group]').forEach(btn => {
+      btn.onclick = () => mergeGroup(parseInt(btn.dataset.mergeGroup));
+    });
+    $$('[data-dismiss-group]').forEach(btn => {
+      btn.onclick = () => dismissGroup(parseInt(btn.dataset.dismissGroup));
+    });
 
     $('#save-draft').onclick = () => saveInvoice('draft');
     if ($('#mark-ready')) $('#mark-ready').onclick = () => saveInvoice('ready');
@@ -704,6 +766,55 @@ function applyBulkMarkup() {
   dirty = true;
   renderInvoiceEditor();
   toast('עודכנו מחירים לכל המוצרים', 'success');
+}
+
+function dismissGroup(groupIdx) {
+  suggestedGroups.splice(groupIdx, 1);
+  renderInvoiceEditor();
+}
+
+async function mergeGroup(groupIdx) {
+  const g = suggestedGroups[groupIdx];
+  if (!g) return;
+
+  const memberProducts = currentInvoice.products.filter(p => g.product_ids.includes(p.id));
+  if (memberProducts.length < 2) {
+    suggestedGroups.splice(groupIdx, 1);
+    renderInvoiceEditor();
+    return;
+  }
+
+  // הצעת שם משותף — השם של המוצר הראשון
+  const defaultName = memberProducts[0].name || '';
+  const newName = prompt('שם המוצר המאוחד:', defaultName);
+  if (newName === null) return; // ביטול
+  if (!newName.trim()) {
+    toast('שם לא יכול להיות ריק', 'error');
+    return;
+  }
+
+  // חישוב כמות ועלות מאוחדים
+  const totalQty = memberProducts.reduce((s, p) => s + (Number(p.quantity) || 1), 0);
+  const totalCost = memberProducts.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
+  const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
+
+  // המוצר המאוחד יחליף את הראשון, השאר יוסרו
+  const first = memberProducts[0];
+  first.name = newName.trim();
+  first.quantity = totalQty;
+  first.cost_price = Math.round(avgCost * 100) / 100;
+  first.merged_from = JSON.stringify(g.product_ids);
+  // ה-customer_price נשאר אם יש, אחרת 0
+
+  // הסרת השאר
+  const idsToRemove = g.product_ids.filter(id => id !== first.id);
+  currentInvoice.products = currentInvoice.products.filter(p => !idsToRemove.includes(p.id));
+
+  // הסרת הקבוצה
+  suggestedGroups.splice(groupIdx, 1);
+  dirty = true;
+  renderInvoiceEditor();
+  toast(`אוחדו ${memberProducts.length} שורות`, 'success');
 }
 
 async function saveInvoice(targetStatus) {
