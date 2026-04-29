@@ -98,6 +98,12 @@
           </div>
         </div>
         <div style="display:flex; gap:6px;">
+          <button id="suppliers-btn" class="icon-btn hidden" title="ספקים">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
           <button id="categories-btn" class="icon-btn hidden" title="מחלקות">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
@@ -172,6 +178,26 @@
       </div>
       <p class="barcode-hint" id="barcode-status">מכוון את הברקוד למסגרת</p>
       <button class="btn-primary" id="barcode-manual">הזנה ידנית במקום</button>
+    </div>
+  </div>
+
+  <!-- Suppliers management modal -->
+  <div id="suppliers-modal" class="modal-overlay hidden">
+    <div class="categories-modal">
+      <div class="barcode-header">
+        <h3>ניהול ספקים</h3>
+        <button class="icon-btn" id="suppliers-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="categories-add-row">
+        <input id="new-supplier-name" type="text" placeholder="שם ספק חדש" />
+        <button class="btn-primary" id="add-supplier-btn">הוסף</button>
+      </div>
+      <div class="categories-add-row" style="border-top: none; padding-top: 0;">
+        <input id="suppliers-search" type="search" placeholder="חיפוש ספק..." style="flex:1;" />
+      </div>
+      <div id="suppliers-list" class="categories-list"></div>
     </div>
   </div>
 
