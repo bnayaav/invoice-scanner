@@ -708,6 +708,7 @@ async function loadHistory() {
         day: 'numeric', month: 'short', year: 'numeric'
       });
       const profit = (inv.total_revenue || 0) - (inv.total_cost || 0);
+      const canDelete = inv.status !== 'imported';
       return `
         <div class="history-card" data-id="${inv.id}">
           <div class="history-card-top">
@@ -715,7 +716,10 @@ async function loadHistory() {
               <div class="history-supplier">${escapeHtml(inv.supplier || '— ללא ספק —')}</div>
               <div class="history-invoice-num">${inv.invoice_number ? '#' + escapeHtml(inv.invoice_number) : ''} ${inv.creator_name ? '· ' + escapeHtml(inv.creator_name) : ''}</div>
             </div>
-            <span class="history-status status-${inv.status}">${statusLabel(inv.status)}</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="history-status status-${inv.status}">${statusLabel(inv.status)}</span>
+              ${canDelete ? `<button class="history-delete-btn" data-del="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">${SVG.trash}</button>` : ''}
+            </div>
           </div>
           <div class="history-card-bottom">
             <div class="history-meta">
@@ -731,9 +735,28 @@ async function loadHistory() {
       `;
     }).join('');
 
-    $$('.history-card').forEach(card =>
-      card.onclick = () => openInvoice(card.dataset.id)
-    );
+    $$('.history-card').forEach(card => {
+      card.onclick = (e) => {
+        // Skip if clicking the delete button
+        if (e.target.closest('[data-del]')) return;
+        openInvoice(card.dataset.id);
+      };
+    });
+    $$('[data-del]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.del;
+        const supplier = btn.dataset.supplier || 'ללא ספק';
+        if (!confirm(`למחוק את החשבונית של ${supplier}?\nפעולה זו לא ניתנת לביטול.`)) return;
+        try {
+          await api(`/api/invoices/${id}`, { method: 'DELETE' });
+          toast('החשבונית נמחקה', 'success');
+          loadHistory();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+    });
   } catch (e) {
     list.innerHTML = `<div class="alert-error">${SVG.alert}<span>${e.message}</span></div>`;
   }
