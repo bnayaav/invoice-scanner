@@ -8,6 +8,9 @@ let pages = [];                  // [{id, dataUrl, file, type}]
 let currentInvoice = null;       // {invoice, products}
 let activeTab = 'new';
 let historyFilter = { status: '', q: '' };
+let categories = [];             // loaded once after login
+let barcodeReader = null;        // ZXing reader instance
+let activeBarcodeProductId = null;
 
 // ─── Helpers ─────────────────────────────────────────────────
 const $  = (sel) => document.querySelector(sel);
@@ -33,6 +36,8 @@ const SVG = {
   alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
   receipt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h20l-2 18-8-3-8 3z"/></svg>`,
   back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  barcode: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M12 5v14M17 5v14M21 5v14"/></svg>`,
+  pos: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
 };
 
 const showLoading = (text) => { $('#loading-text').textContent = text; $('#loading-overlay').classList.remove('hidden'); };
@@ -127,7 +132,16 @@ function showApp() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#user-greeting').textContent = `שלום, ${currentUser.display_name}`;
+  if (currentUser.role === 'admin') $('#categories-btn').classList.remove('hidden');
+  loadCategories();
   renderNewTab();
+}
+
+async function loadCategories() {
+  try {
+    const { categories: cats } = await api('/api/categories');
+    categories = cats || [];
+  } catch { categories = []; }
 }
 
 $('#setup-form').addEventListener('submit', async (e) => {
@@ -363,6 +377,30 @@ function renderInvoiceEditor() {
             </span>
           </div>
         ` : ''}
+
+        <div class="product-barcode-row">
+          <div>
+            <label>ברקוד</label>
+            <input data-field="barcode" value="${escapeAttr(p.barcode || '')}" placeholder="ברקוד מוצר" ${isReadOnly ? 'readonly' : ''} />
+          </div>
+          ${isReadOnly ? '' : `<button class="scan-barcode-btn" data-scan="${p.id}" title="סרוק ברקוד">${SVG.barcode}</button>`}
+        </div>
+
+        <div class="product-cat-row">
+          <div>
+            <label>מחלקה</label>
+            <select data-field="category" ${isReadOnly ? 'disabled' : ''}>
+              <option value="">— בחר מחלקה —</option>
+              ${categories.map(c => `
+                <option value="${escapeAttr(c.name)}" ${p.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>
+              `).join('')}
+            </select>
+          </div>
+          <div>
+            <label>ספק</label>
+            <input data-field="supplier_name" value="${escapeAttr(p.supplier_name || inv.supplier || '')}" placeholder="שם ספק" ${isReadOnly ? 'readonly' : ''} />
+          </div>
+        </div>
       </div>
     `;
   }).join('');
@@ -454,10 +492,13 @@ function renderInvoiceEditor() {
     $$('.product-card').forEach(card => {
       const pid = card.dataset.pid;
       card.querySelectorAll('[data-field]').forEach(input => {
-        input.oninput = () => updateProductField(pid, input.dataset.field, input.value);
+        const evt = (input.tagName === 'SELECT') ? 'onchange' : 'oninput';
+        input[evt] = () => updateProductField(pid, input.dataset.field, input.value);
       });
       const rm = card.querySelector('[data-remove]');
       if (rm) rm.onclick = () => removeProduct(pid);
+      const scanBtn = card.querySelector('[data-scan]');
+      if (scanBtn) scanBtn.onclick = () => openBarcodeScanner(pid);
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
@@ -567,7 +608,8 @@ function removeProduct(pid) {
 function addProduct() {
   currentInvoice.products.push({
     id: uuid(),
-    name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0
+    name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0,
+    barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || ''
   });
   dirty = true;
   renderInvoiceEditor();
@@ -698,6 +740,115 @@ async function openInvoice(id) {
   } finally {
     hideLoading();
   }
+}
+
+// ─── Barcode scanner ────────────────────────────────────────
+async function openBarcodeScanner(productId) {
+  activeBarcodeProductId = productId;
+  $('#barcode-modal').classList.remove('hidden');
+  $('#barcode-status').textContent = 'מבקש גישה למצלמה...';
+
+  if (!window.ZXing) {
+    $('#barcode-status').textContent = 'ספריית סריקה לא נטענה';
+    return;
+  }
+
+  try {
+    barcodeReader = new ZXing.BrowserMultiFormatReader();
+    const devices = await barcodeReader.listVideoInputDevices();
+    if (!devices.length) {
+      $('#barcode-status').textContent = 'לא נמצאה מצלמה';
+      return;
+    }
+    // Prefer rear camera
+    const rear = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+
+    $('#barcode-status').textContent = 'מכוון את הברקוד למסגרת';
+    barcodeReader.decodeFromVideoDevice(rear.deviceId, 'barcode-video', (result, err) => {
+      if (result) {
+        const code = result.getText();
+        if (code) {
+          updateProductField(activeBarcodeProductId, 'barcode', code);
+          // Reflect immediately in UI
+          const card = document.querySelector(`.product-card[data-pid="${activeBarcodeProductId}"]`);
+          const input = card?.querySelector('[data-field="barcode"]');
+          if (input) input.value = code;
+          closeBarcodeScanner();
+          toast(`ברקוד נסרק: ${code}`, 'success');
+          // Vibrate if supported
+          if (navigator.vibrate) navigator.vibrate(80);
+        }
+      }
+    });
+  } catch (e) {
+    $('#barcode-status').textContent = 'שגיאה: ' + (e.message || e);
+  }
+}
+
+function closeBarcodeScanner() {
+  try { barcodeReader?.reset(); } catch {}
+  barcodeReader = null;
+  activeBarcodeProductId = null;
+  $('#barcode-modal').classList.add('hidden');
+}
+
+$('#barcode-close').addEventListener('click', closeBarcodeScanner);
+$('#barcode-manual').addEventListener('click', () => {
+  closeBarcodeScanner();
+  setTimeout(() => {
+    const card = document.querySelector(`.product-card[data-pid="${activeBarcodeProductId}"]`);
+    const input = card?.querySelector('[data-field="barcode"]');
+    input?.focus();
+  }, 100);
+});
+
+// ─── Categories management ──────────────────────────────────
+$('#categories-btn').addEventListener('click', () => {
+  $('#categories-modal').classList.remove('hidden');
+  renderCategoriesList();
+});
+$('#categories-close').addEventListener('click', () => {
+  $('#categories-modal').classList.add('hidden');
+});
+$('#add-category-btn').addEventListener('click', addCategory);
+$('#new-category-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addCategory();
+});
+
+function renderCategoriesList() {
+  const list = $('#categories-list');
+  if (!categories.length) {
+    list.innerHTML = '<div class="empty-state"><p>אין מחלקות עדיין</p></div>';
+    return;
+  }
+  list.innerHTML = categories.map(c => `
+    <div class="category-item">
+      <span>${escapeHtml(c.name)}</span>
+      <button data-del="${c.id}">${SVG.trash}</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(`למחוק את "${categories.find(x => x.id === b.dataset.del)?.name}"?`)) return;
+      try {
+        await api(`/api/categories?id=${b.dataset.del}`, { method: 'DELETE' });
+        await loadCategories();
+        renderCategoriesList();
+      } catch (e) { toast(e.message, 'error'); }
+    };
+  });
+}
+
+async function addCategory() {
+  const name = $('#new-category-name').value.trim();
+  if (!name) return;
+  try {
+    await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+    $('#new-category-name').value = '';
+    await loadCategories();
+    renderCategoriesList();
+    toast('מחלקה נוספה', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ─── Boot ───────────────────────────────────────────────────
