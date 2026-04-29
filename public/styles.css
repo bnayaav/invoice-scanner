@@ -635,6 +635,28 @@ button { cursor: pointer; border: none; }
 .history-delete-btn:active { transform: scale(0.9); }
 .history-delete-btn svg { width: 14px; height: 14px; }
 
+.history-card.has-error { border-color: #fca5a5; }
+.history-error {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 8px 10px;
+  margin: 8px 0 0;
+  background: var(--red-bg);
+  border-radius: 8px;
+  font-size: 12px; color: #991b1b;
+}
+.history-error svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; color: var(--red); }
+
+.product-card.has-error { border-color: #fca5a5; }
+.product-error-banner {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 8px 10px;
+  margin: -2px 0 10px;
+  background: var(--red-bg);
+  border-radius: 8px;
+  font-size: 12px; color: #991b1b;
+}
+.product-error-banner svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; color: var(--red); }
+
 .history-card-bottom {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 12px; color: var(--muted);
@@ -753,6 +775,10 @@ button { cursor: pointer; border: none; }
   text-align: center; margin: 14px;
   font-size: 13px; color: var(--muted);
 }
+.barcode-queue {
+  text-align: center; margin: 0 14px 8px;
+  font-size: 12px; font-weight: 600; color: var(--amber-text);
+}
 .barcode-modal .btn-primary { margin: 0 14px 14px; }
 
 /* Product barcode/category fields */
@@ -855,3 +881,40 @@ button { cursor: pointer; border: none; }
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
   color: white;
 }
+
+/* ─── Install banner ──────────────────────────────────────── */
+.install-banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 60;
+  padding: max(12px, var(--safe-top)) 14px 12px;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: white;
+  box-shadow: 0 4px 20px rgba(26, 31, 46, 0.25);
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.install-banner-content {
+  display: flex; align-items: center; gap: 10px;
+  max-width: 500px; margin: 0 auto;
+}
+.install-banner svg { color: var(--gold); width: 28px; height: 28px; flex-shrink: 0; }
+.install-banner-text { flex: 1; min-width: 0; }
+.install-banner-text strong { font-size: 13px; font-weight: 700; display: block; }
+.install-banner-text p { font-size: 11px; margin: 2px 0 0; color: rgba(252, 211, 77, 0.7); }
+.install-banner .btn-primary {
+  margin: 0; padding: 8px 16px;
+  font-size: 13px;
+  background: linear-gradient(135deg, var(--amber) 0%, var(--amber-deep) 100%);
+  box-shadow: none;
+  flex-shrink: 0;
+}
+.install-banner .icon-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  width: 32px; height: 32px;
+  flex-shrink: 0;
+}
+.install-banner .icon-btn svg { width: 14px; height: 14px; }
