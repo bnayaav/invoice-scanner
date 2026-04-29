@@ -19,7 +19,7 @@ export async function onRequestGet({ request, env }) {
   const invoicesWithProducts = [];
   for (const inv of invoices) {
     const { results: products } = await env.DB
-      .prepare(`SELECT id, name, model, quantity, cost_price, customer_price, sort_order
+      .prepare(`SELECT id, name, model, quantity, cost_price, customer_price, sort_order, barcode, category, supplier_name
                 FROM products WHERE invoice_id = ? ORDER BY sort_order ASC`)
       .bind(inv.id).all();
     invoicesWithProducts.push({ ...inv, products });
