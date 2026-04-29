@@ -9,6 +9,7 @@ let currentInvoice = null;       // {invoice, products}
 let activeTab = 'new';
 let historyFilter = { status: '', q: '' };
 let categories = [];             // loaded once after login
+let suppliers = [];              // loaded once after login
 let barcodeReader = null;        // ZXing reader instance
 let activeBarcodeProductId = null;
 
@@ -133,7 +134,9 @@ function showApp() {
   $('#app').classList.remove('hidden');
   $('#user-greeting').textContent = `שלום, ${currentUser.display_name}`;
   if (currentUser.role === 'admin') $('#categories-btn').classList.remove('hidden');
+  if (currentUser.role === 'admin') $('#suppliers-btn')?.classList.remove('hidden');
   loadCategories();
+  loadSuppliers();
   renderNewTab();
 }
 
@@ -142,6 +145,24 @@ async function loadCategories() {
     const { categories: cats } = await api('/api/categories');
     categories = cats || [];
   } catch { categories = []; }
+}
+
+async function loadSuppliers() {
+  try {
+    const { suppliers: sups } = await api('/api/suppliers');
+    suppliers = sups || [];
+    renderSuppliersDatalist();
+  } catch { suppliers = []; }
+}
+
+function renderSuppliersDatalist() {
+  let dl = document.getElementById('suppliers-datalist');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'suppliers-datalist';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = suppliers.map(s => `<option value="${escapeAttr(s.name)}"></option>`).join('');
 }
 
 $('#setup-form').addEventListener('submit', async (e) => {
@@ -398,7 +419,7 @@ function renderInvoiceEditor() {
           </div>
           <div>
             <label>ספק</label>
-            <input data-field="supplier_name" value="${escapeAttr(p.supplier_name || inv.supplier || '')}" placeholder="שם ספק" ${isReadOnly ? 'readonly' : ''} />
+            <input list="suppliers-datalist" data-field="supplier_name" value="${escapeAttr(p.supplier_name || inv.supplier || '')}" placeholder="בחר או הקלד..." ${isReadOnly ? 'readonly' : ''} />
           </div>
         </div>
       </div>
@@ -420,7 +441,7 @@ function renderInvoiceEditor() {
 
     <div class="invoice-meta">
       <div class="invoice-meta-label">חשבונית</div>
-      <input class="invoice-meta-input title" data-meta="supplier" value="${escapeAttr(inv.supplier || '')}" placeholder="שם הספק" ${isReadOnly ? 'readonly' : ''} />
+      <input list="suppliers-datalist" class="invoice-meta-input title" data-meta="supplier" value="${escapeAttr(inv.supplier || '')}" placeholder="שם הספק" ${isReadOnly ? 'readonly' : ''} />
       <div class="invoice-meta-grid">
         <div>
           <div class="invoice-meta-label">מס׳ חשבונית</div>
@@ -848,6 +869,61 @@ async function addCategory() {
     await loadCategories();
     renderCategoriesList();
     toast('מחלקה נוספה', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Suppliers management ───────────────────────────────────
+$('#suppliers-btn')?.addEventListener('click', () => {
+  $('#suppliers-modal').classList.remove('hidden');
+  $('#suppliers-search').value = '';
+  renderSuppliersList();
+});
+$('#suppliers-close')?.addEventListener('click', () => {
+  $('#suppliers-modal').classList.add('hidden');
+});
+$('#add-supplier-btn')?.addEventListener('click', addSupplier);
+$('#new-supplier-name')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addSupplier();
+});
+$('#suppliers-search')?.addEventListener('input', renderSuppliersList);
+
+function renderSuppliersList() {
+  const list = $('#suppliers-list');
+  const q = ($('#suppliers-search').value || '').trim().toLowerCase();
+  const filtered = q ? suppliers.filter(s => s.name.toLowerCase().includes(q)) : suppliers;
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><p>${q ? 'לא נמצא' : 'אין ספקים עדיין'}</p></div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(s => `
+    <div class="category-item">
+      <span>${escapeHtml(s.name)}${s.code ? ` <span style="opacity:0.5;font-size:11px">#${escapeHtml(s.code)}</span>` : ''}</span>
+      <button data-del="${s.id}">${SVG.trash}</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = async () => {
+      const sup = suppliers.find(x => x.id === b.dataset.del);
+      if (!confirm(`למחוק את "${sup?.name}"?`)) return;
+      try {
+        await api(`/api/suppliers?id=${b.dataset.del}`, { method: 'DELETE' });
+        await loadSuppliers();
+        renderSuppliersList();
+      } catch (e) { toast(e.message, 'error'); }
+    };
+  });
+}
+
+async function addSupplier() {
+  const name = $('#new-supplier-name').value.trim();
+  if (!name) return;
+  try {
+    await api('/api/suppliers', { method: 'POST', body: JSON.stringify({ name }) });
+    $('#new-supplier-name').value = '';
+    await loadSuppliers();
+    renderSuppliersList();
+    toast('ספק נוסף', 'success');
   } catch (e) { toast(e.message, 'error'); }
 }
 
