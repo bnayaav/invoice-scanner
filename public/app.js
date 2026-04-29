@@ -360,13 +360,25 @@ function renderInvoiceEditor() {
     const isPositive = profit >= 0;
 
     return `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'}" data-pid="${p.id}">
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
             <span>${escapeHtml(p.error_message)}</span>
           </div>
         ` : ''}
+
+        ${isReadOnly ? '' : `
+        <div class="product-status-row">
+          <button class="status-toggle ${p.is_new ? '' : 'active'}" data-set-new="${p.id}" data-value="0">
+            <span class="status-dot existing"></span>קיים
+          </button>
+          <button class="status-toggle ${p.is_new ? 'active' : ''}" data-set-new="${p.id}" data-value="1">
+            <span class="status-dot new"></span>חדש
+          </button>
+        </div>
+        `}
+
         <div class="product-row1">
           <div class="product-num">${idx + 1}</div>
           <div class="product-fields">
@@ -468,6 +480,21 @@ function renderInvoiceEditor() {
         <button id="bulk-apply">החל</button>
       </div>
     </div>
+
+    <div class="bulk-card">
+      <div class="bulk-card-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>סמן את כל המוצרים</span>
+      </div>
+      <div class="bulk-row">
+        <button id="mark-all-existing" class="bulk-mark-btn">
+          <span class="status-dot existing"></span> הכל קיימים
+        </button>
+        <button id="mark-all-new" class="bulk-mark-btn">
+          <span class="status-dot new"></span> הכל חדשים
+        </button>
+      </div>
+    </div>
     `}
 
     <div class="products-header">
@@ -526,9 +553,34 @@ function renderInvoiceEditor() {
       if (rm) rm.onclick = () => removeProduct(pid);
       const scanBtn = card.querySelector('[data-scan]');
       if (scanBtn) scanBtn.onclick = () => openBarcodeScanner(pid);
+      // Status toggle (new/existing)
+      card.querySelectorAll('[data-set-new]').forEach(btn => {
+        btn.onclick = () => {
+          updateProductField(pid, 'is_new', btn.dataset.value === '1' ? 1 : 0);
+          renderInvoiceEditor();
+        };
+      });
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
+
+    // Bulk status mark buttons
+    if ($('#mark-all-existing')) {
+      $('#mark-all-existing').onclick = () => {
+        currentInvoice.products.forEach(p => p.is_new = 0);
+        dirty = true;
+        renderInvoiceEditor();
+        toast('כל המוצרים סומנו כקיימים', 'success');
+      };
+    }
+    if ($('#mark-all-new')) {
+      $('#mark-all-new').onclick = () => {
+        currentInvoice.products.forEach(p => p.is_new = 1);
+        dirty = true;
+        renderInvoiceEditor();
+        toast('כל המוצרים סומנו כחדשים', 'success');
+      };
+    }
 
     $('#save-draft').onclick = () => saveInvoice('draft');
     if ($('#mark-ready')) $('#mark-ready').onclick = () => saveInvoice('ready');
@@ -636,7 +688,8 @@ function addProduct() {
   currentInvoice.products.push({
     id: uuid(),
     name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0,
-    barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || ''
+    barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || '',
+    is_new: 0
   });
   dirty = true;
   renderInvoiceEditor();
