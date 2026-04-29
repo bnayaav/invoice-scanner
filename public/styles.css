@@ -705,6 +705,66 @@ button { cursor: pointer; border: none; }
 .bulk-mark-btn:active { transform: scale(0.97); }
 .bulk-mark-btn:hover { background: white; border-color: var(--ink); }
 
+/* ─── AI Group Suggestions ──────────────────────────────────── */
+.group-suggestion {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid var(--amber);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 8px 0 -4px;
+  position: relative;
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.2);
+}
+.group-suggestion-header {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-bottom: 10px;
+}
+.group-suggestion-header svg {
+  width: 22px; height: 22px;
+  color: var(--amber-text);
+  flex-shrink: 0; margin-top: 2px;
+}
+.group-suggestion-text { flex: 1; min-width: 0; }
+.group-suggestion-text strong {
+  display: block;
+  font-family: 'Rubik', sans-serif;
+  font-size: 14px; font-weight: 700;
+  color: var(--amber-text);
+  margin-bottom: 2px;
+}
+.group-suggestion-text span {
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.4;
+}
+.group-suggestion-actions {
+  display: flex; gap: 8px;
+}
+.btn-merge, .btn-keep-separate {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-weight: 600; font-size: 13px;
+  transition: transform 0.1s;
+}
+.btn-merge:active, .btn-keep-separate:active { transform: scale(0.97); }
+.btn-merge {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.3);
+}
+.btn-keep-separate {
+  background: rgba(255, 255, 255, 0.7);
+  color: #78350f;
+  border: 1px solid rgba(146, 64, 14, 0.2);
+}
+
+.product-card.in-group {
+  border-color: var(--amber);
+  border-style: dashed;
+  background: linear-gradient(180deg, #fffbf2 0%, white 100%);
+}
+
 .history-card-bottom {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 12px; color: var(--muted);
