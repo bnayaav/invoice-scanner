@@ -657,6 +657,54 @@ button { cursor: pointer; border: none; }
 }
 .product-error-banner svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; color: var(--red); }
 
+/* ─── Product status toggle (new / existing) ──────────────── */
+.product-status-row {
+  display: flex; gap: 6px;
+  margin-bottom: 10px;
+}
+.status-toggle {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line);
+  font-size: 12px; font-weight: 600;
+  color: var(--muted);
+  transition: all 0.15s;
+}
+.status-toggle.active {
+  background: white;
+  border-color: var(--ink);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(26, 31, 46, 0.08);
+}
+.status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.existing { background: var(--green); }
+.status-dot.new { background: var(--amber); }
+
+.product-card.is-new { border-left: 3px solid var(--amber); }
+.product-card.is-existing { border-left: 3px solid var(--green); }
+
+.bulk-mark-btn {
+  flex: 1;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line);
+  font-weight: 600; font-size: 13px;
+  color: var(--ink);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.15s;
+}
+.bulk-mark-btn:active { transform: scale(0.97); }
+.bulk-mark-btn:hover { background: white; border-color: var(--ink); }
+
 .history-card-bottom {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 12px; color: var(--muted);
