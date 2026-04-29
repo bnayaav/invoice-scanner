@@ -360,7 +360,13 @@ function renderInvoiceEditor() {
     const isPositive = profit >= 0;
 
     return `
-      <div class="product-card ${hasPrice ? 'has-price' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''}" data-pid="${p.id}">
+        ${p.error_message ? `
+          <div class="product-error-banner">
+            ${SVG.alert}
+            <span>${escapeHtml(p.error_message)}</span>
+          </div>
+        ` : ''}
         <div class="product-row1">
           <div class="product-num">${idx + 1}</div>
           <div class="product-fields">
@@ -709,8 +715,9 @@ async function loadHistory() {
       });
       const profit = (inv.total_revenue || 0) - (inv.total_cost || 0);
       const canDelete = inv.status !== 'imported';
+      const hasError = inv.error_message;
       return `
-        <div class="history-card" data-id="${inv.id}">
+        <div class="history-card ${hasError ? 'has-error' : ''}" data-id="${inv.id}">
           <div class="history-card-top">
             <div>
               <div class="history-supplier">${escapeHtml(inv.supplier || '— ללא ספק —')}</div>
@@ -721,6 +728,12 @@ async function loadHistory() {
               ${canDelete ? `<button class="history-delete-btn" data-del="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">${SVG.trash}</button>` : ''}
             </div>
           </div>
+          ${hasError ? `
+            <div class="history-error">
+              ${SVG.alert}
+              <span>${escapeHtml(inv.error_message)}</span>
+            </div>
+          ` : ''}
           <div class="history-card-bottom">
             <div class="history-meta">
               <span>${date}</span>
@@ -791,6 +804,7 @@ async function openBarcodeScanner(productId) {
   activeBarcodeProductId = productId;
   $('#barcode-modal').classList.remove('hidden');
   $('#barcode-status').textContent = 'מבקש גישה למצלמה...';
+  updateScanQueueLabel();
 
   if (!window.ZXing) {
     $('#barcode-status').textContent = 'ספריית סריקה לא נטענה';
@@ -804,28 +818,65 @@ async function openBarcodeScanner(productId) {
       $('#barcode-status').textContent = 'לא נמצאה מצלמה';
       return;
     }
-    // Prefer rear camera
     const rear = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
 
     $('#barcode-status').textContent = 'מכוון את הברקוד למסגרת';
     barcodeReader.decodeFromVideoDevice(rear.deviceId, 'barcode-video', (result, err) => {
       if (result) {
         const code = result.getText();
-        if (code) {
+        if (code && code !== lastScannedCode) {
+          lastScannedCode = code;
+          setTimeout(() => { lastScannedCode = null; }, 1500); // prevent re-scan flood
+
           updateProductField(activeBarcodeProductId, 'barcode', code);
-          // Reflect immediately in UI
           const card = document.querySelector(`.product-card[data-pid="${activeBarcodeProductId}"]`);
           const input = card?.querySelector('[data-field="barcode"]');
           if (input) input.value = code;
-          closeBarcodeScanner();
-          toast(`ברקוד נסרק: ${code}`, 'success');
-          // Vibrate if supported
           if (navigator.vibrate) navigator.vibrate(80);
+
+          // Continuous mode: jump to next product without barcode
+          const nextPid = findNextEmptyBarcode(activeBarcodeProductId);
+          if (nextPid) {
+            activeBarcodeProductId = nextPid;
+            $('#barcode-status').textContent = `✓ ${code.slice(0, 12)} — סורק את הבא...`;
+            updateScanQueueLabel();
+            // Briefly highlight which product is next
+            const nextCard = document.querySelector(`.product-card[data-pid="${nextPid}"]`);
+            if (nextCard) nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            // No more empty barcodes — close
+            closeBarcodeScanner();
+            toast(`ברקוד אחרון נסרק: ${code}`, 'success');
+          }
         }
       }
     });
   } catch (e) {
     $('#barcode-status').textContent = 'שגיאה: ' + (e.message || e);
+  }
+}
+
+let lastScannedCode = null;
+
+function findNextEmptyBarcode(currentId) {
+  const products = currentInvoice?.products || [];
+  const currentIdx = products.findIndex(p => p.id === currentId);
+  // Look forward from current position, wrap around
+  for (let offset = 1; offset <= products.length; offset++) {
+    const idx = (currentIdx + offset) % products.length;
+    if (idx === currentIdx) break;
+    const p = products[idx];
+    if (!(p.barcode || '').trim()) return p.id;
+  }
+  return null;
+}
+
+function updateScanQueueLabel() {
+  const products = currentInvoice?.products || [];
+  const remaining = products.filter(p => !(p.barcode || '').trim()).length;
+  const label = document.getElementById('barcode-queue-count');
+  if (label) {
+    label.textContent = remaining > 0 ? `נותרו ${remaining} מוצרים ללא ברקוד` : 'כל המוצרים סרוקים ✓';
   }
 }
 
@@ -948,6 +999,68 @@ async function addSupplier() {
     renderSuppliersList();
     toast('ספק נוסף', 'success');
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── PWA install prompt ────────────────────────────────────
+let deferredInstallPrompt = null;
+const INSTALL_DISMISSED_KEY = 'install-banner-dismissed';
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true;
+}
+
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function showInstallBanner() {
+  if (isStandalone()) return; // already installed
+  if (sessionStorage.getItem(INSTALL_DISMISSED_KEY)) return;
+  $('#install-banner').classList.remove('hidden');
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner();
+});
+
+window.addEventListener('appinstalled', () => {
+  $('#install-banner').classList.add('hidden');
+  deferredInstallPrompt = null;
+  toast('האפליקציה הותקנה בהצלחה', 'success');
+});
+
+$('#install-btn')?.addEventListener('click', async () => {
+  if (deferredInstallPrompt) {
+    // Chrome/Android — native prompt
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') {
+      $('#install-banner').classList.add('hidden');
+    }
+    deferredInstallPrompt = null;
+  } else if (isIOS()) {
+    // iOS — show manual instructions
+    $('#ios-install-modal').classList.remove('hidden');
+  } else {
+    toast('כדי להתקין: פתח בדפדפן ובחר "התקן אפליקציה" מהתפריט', '');
+  }
+});
+
+$('#install-dismiss')?.addEventListener('click', () => {
+  $('#install-banner').classList.add('hidden');
+  sessionStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+});
+
+$('#ios-install-close')?.addEventListener('click', () => {
+  $('#ios-install-modal').classList.add('hidden');
+});
+
+// On iOS — show banner immediately (no beforeinstallprompt support)
+if (isIOS() && !isStandalone()) {
+  setTimeout(showInstallBanner, 2000);
 }
 
 // ─── Boot ───────────────────────────────────────────────────
