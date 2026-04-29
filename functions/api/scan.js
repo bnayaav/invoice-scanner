@@ -9,25 +9,36 @@ const MAX_PAGES = 10;
 
 const SYSTEM_PROMPT = `אתה עוזר לחנות בישראל לסרוק חשבוניות ספק ולחלץ את רשימת המוצרים. אתה מחזיר JSON תקין בלבד, ללא markdown, ללא טקסט נוסף לפני או אחרי.`;
 
-const buildUserPrompt = (pageCount) => `סרוק את החשבונית ${pageCount > 1 ? `(${pageCount} עמודים)` : ''} והחזר JSON בפורמט הבא:
+const buildUserPrompt = (pageCount, suppliers = [], categories = []) => {
+  const suppliersList = suppliers.length
+    ? `\nרשימת הספקים הקיימים במערכת — חובה לבחור מהרשימה הזו אם אחד מהם מופיע בחשבונית:\n${suppliers.map(s => `- ${s}`).join('\n')}\n`
+    : '';
+  const categoriesList = categories.length
+    ? `\nרשימת המחלקות הקיימות במערכת — לכל מוצר נסה לבחור את המחלקה המתאימה ביותר מהרשימה:\n${categories.map(c => `- ${c}`).join('\n')}\n`
+    : '';
+
+  return `סרוק את החשבונית ${pageCount > 1 ? `(${pageCount} עמודים)` : ''} והחזר JSON בפורמט הבא:
 
 {
-  "supplier": "שם הספק",
+  "supplier": "שם הספק (מתוך הרשימה אם מופיע)",
   "invoice_number": "מספר חשבונית",
   "date": "DD/MM/YYYY",
   "currency": "ILS" | "USD" | "EUR",
   "products": [
-    { "name": "שם מוצר", "model": "דגם/מק״ט או null", "quantity": <int>, "cost_price": <number> }
+    { "name": "שם מוצר", "model": "דגם/מק״ט או null", "quantity": <int>, "cost_price": <number>, "category": "מחלקה מהרשימה או null" }
   ]
 }
-
+${suppliersList}${categoriesList}
 כללים:
 - מחיר עלות תמיד ליחידה (אם רשום סך, חלק בכמות)
 - אל תכלול מע״מ אם רשום בנפרד
 - אל תכלול שורות של הנחות / סכום ביניים / מע״מ / משלוח / סך הכל
 - שמור עברית בעברית, אנגלית באנגלית
 - אם אין מספר חשבונית או תאריך — החזר null
+- ספק: אם זיהית ספק בחשבונית שמופיע ברשימה, החזר את השם בדיוק כמו ברשימה. אם לא ברשימה, החזר את השם שראית.
+- מחלקה: לכל מוצר, נסה לבחור מחלקה מתאימה מהרשימה. אם לא בטוח, החזר null.
 - בדוק כל מספר פעמיים`;
+};
 
 export async function onRequestPost({ request, env }) {
   const session = await requireUser({ request, env });
@@ -41,6 +52,14 @@ export async function onRequestPost({ request, env }) {
   if (!pages || pages.length === 0) return error('לא נשלחו תמונות', 400);
   if (pages.length > MAX_PAGES) return error(`מקסימום ${MAX_PAGES} עמודים`, 400);
 
+  // Load suppliers + categories so Claude can match against them
+  const [suppliersRes, categoriesRes] = await Promise.all([
+    env.DB.prepare(`SELECT name FROM suppliers WHERE active = 1 ORDER BY name`).all(),
+    env.DB.prepare(`SELECT name FROM categories ORDER BY sort_order, name`).all(),
+  ]);
+  const supplierNames = (suppliersRes.results || []).map(r => r.name);
+  const categoryNames = (categoriesRes.results || []).map(r => r.name);
+
   // Validate each page
   const content = [];
   for (const p of pages) {
@@ -51,7 +70,7 @@ export async function onRequestPost({ request, env }) {
       source: { type: 'base64', media_type: p.media_type, data: p.data }
     });
   }
-  content.push({ type: 'text', text: buildUserPrompt(pages.length) });
+  content.push({ type: 'text', text: buildUserPrompt(pages.length, supplierNames, categoryNames) });
 
   // Call Claude API
   let aiResp;
@@ -124,9 +143,15 @@ export async function onRequestPost({ request, env }) {
     const qty = Math.max(1, parseInt(p.quantity) || 1);
     totalCost += cost * qty;
     return env.DB.prepare(
-      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
-    ).bind(uuid(), invoiceId, p.name || '', p.model || null, qty, cost, idx);
+      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, category, supplier_name)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+    ).bind(
+      uuid(), invoiceId,
+      p.name || '', p.model || null,
+      qty, cost, idx,
+      p.category || null,
+      parsed.supplier || null
+    );
   });
 
   if (productInserts.length > 0) {
