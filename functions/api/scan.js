@@ -116,6 +116,74 @@ export async function onRequestPost({ request, env }) {
 
   const productsArr = Array.isArray(parsed.products) ? parsed.products : [];
 
+  // === שלב 2: זיהוי קבוצות "אותו מוצר בבסיס" ===
+  // שולחים ל-Claude את רשימת המוצרים ושואלים אילו מהם הם בעצם אותו מוצר
+  // (לדוגמה צבעים שונים של אותו פריט, או שורת בונוס 10+1)
+  let groups = [];
+  if (productsArr.length >= 2) {
+    try {
+      const productLines = productsArr.map((p, i) =>
+        `${i}: ${p.name || ''}${p.model ? ' / ' + p.model : ''} | qty=${p.quantity} | cost=${p.cost_price}`
+      ).join('\n');
+
+      const groupingPrompt = `הנה רשימת מוצרים מחשבונית. זהה אילו מהם הם בעצם **אותו מוצר בבסיס** רק בווריאציות שונות (צבע שונה, או שורת בונוס "10+1" כשהיא מופיעה כשורה נפרדת עם מחיר 0 או מחיר נמוך משמעותית).
+
+מוצרים:
+${productLines}
+
+החזר JSON תקין בלבד בפורמט:
+{
+  "groups": [
+    { "indices": [0, 1], "reason": "אותו כבל בצבע שונה" }
+  ]
+}
+
+כללים:
+- כלול בקבוצה רק מוצרים שבאמת זהים בבסיס (אותו פונקציונליות, אותו דגם בסיסי)
+- קבוצה חייבת לכלול לפחות 2 מוצרים
+- אל תכלול בקבוצות מוצרים שונים אפילו אם השם דומה
+- אם אין שום קבוצות — החזר {"groups": []}
+- החזר JSON בלבד, ללא markdown ללא טקסט נוסף`;
+
+      const groupResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: groupingPrompt }]
+        })
+      });
+
+      if (groupResp.ok) {
+        const groupData = await groupResp.json();
+        const groupText = (groupData.content || []).find(b => b.type === 'text')?.text || '';
+        let cleanGroup = groupText.trim()
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```\s*$/i, '');
+        const gs = cleanGroup.indexOf('{');
+        const ge = cleanGroup.lastIndexOf('}');
+        if (gs !== -1 && ge !== -1) cleanGroup = cleanGroup.slice(gs, ge + 1);
+        try {
+          const groupParsed = JSON.parse(cleanGroup);
+          if (Array.isArray(groupParsed.groups)) {
+            groups = groupParsed.groups.filter(g =>
+              Array.isArray(g.indices) && g.indices.length >= 2
+            );
+          }
+        } catch (e) {
+          // אם הפענוח נכשל, פשוט ממשיכים בלי קבוצות
+        }
+      }
+    } catch (e) {
+      // אם זיהוי הקבוצות נכשל, ממשיכים בלעדיו
+    }
+  }
+
   // Insert invoice
   const invoiceId = uuid();
   const now = Math.floor(Date.now() / 1000);
@@ -167,5 +235,11 @@ export async function onRequestPost({ request, env }) {
     .prepare(`SELECT * FROM products WHERE invoice_id = ? ORDER BY sort_order ASC`)
     .bind(invoiceId).all();
 
-  return json({ invoice, products });
+  // המרת ה-groups ל-product IDs (במקום אינדקסים)
+  const groupsWithIds = groups.map(g => ({
+    product_ids: g.indices.map(i => products[i]?.id).filter(Boolean),
+    reason: g.reason || ''
+  })).filter(g => g.product_ids.length >= 2);
+
+  return json({ invoice, products, suggested_groups: groupsWithIds });
 }
