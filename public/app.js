@@ -427,6 +427,14 @@ function renderInvoiceEditor() {
           <button class="status-toggle ${p.is_new ? 'active' : ''}" data-set-new="${p.id}" data-value="1">
             <span class="status-dot new"></span>חדש
           </button>
+          <button class="status-toggle print-toggle ${p.print_labels === 0 ? '' : 'active'}" data-toggle-print="${p.id}" title="${p.print_labels === 0 ? 'לא מדפיסים' : 'מדפיסים מדבקה'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+              <polyline points="6 9 6 2 18 2 18 9"/>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            ${p.print_labels === 0 ? 'ללא הדפסה' : 'מדבקה'}
+          </button>
         </div>
         `}
 
@@ -614,6 +622,16 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       });
+      // Print labels toggle
+      const printBtn = card.querySelector('[data-toggle-print]');
+      if (printBtn) {
+        printBtn.onclick = () => {
+          const p = currentInvoice.products.find(x => x.id === pid);
+          const newVal = p.print_labels === 0 ? 1 : 0;
+          updateProductField(pid, 'print_labels', newVal);
+          renderInvoiceEditor();
+        };
+      }
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
@@ -751,7 +769,7 @@ function addProduct() {
     id: uuid(),
     name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0,
     barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || '',
-    is_new: 0
+    is_new: 0, print_labels: 1
   });
   dirty = true;
   renderInvoiceEditor();
