@@ -713,6 +713,24 @@ button { cursor: pointer; border: none; }
   background: #fee2e2;
 }
 
+.status-toggle.print-only-toggle {
+  flex: 1;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-color: #e5e7eb;
+}
+.status-toggle.print-only-toggle.active {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  color: #065f46;
+  border-color: #34d399;
+  font-weight: 700;
+}
+
+.product-card.is-print-only {
+  border-left: 3px solid #34d399;
+  background: linear-gradient(180deg, #ecfdf5 0%, white 100%);
+}
+
 .product-card.is-skipped {
   position: relative;
   opacity: 0.5;
