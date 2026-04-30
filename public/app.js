@@ -411,7 +411,7 @@ function renderInvoiceEditor() {
     const inGroup = productToGroup[p.id] !== undefined;
 
     const cardHtml = `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.skip_import ? 'is-skipped' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.skip_import ? 'is-skipped' : ''} ${p.print_only ? 'is-print-only' : ''}" data-pid="${p.id}">
         ${p.skip_import ? `
           <div class="skip-overlay">
             <span>⊘ מוצר זה ידולג בייבוא</span>
@@ -447,6 +447,14 @@ function renderInvoiceEditor() {
               <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
             </svg>
             דלג
+          </button>
+          <button class="status-toggle print-only-toggle ${p.print_only ? 'active' : ''}" data-toggle-print-only="${p.id}" title="${p.print_only ? 'הדפסה בלבד פעיל' : 'הדפס מדבקות בלי לעדכן'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+              <polyline points="6 9 6 2 18 2 18 9"/>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            רק מדבקה
           </button>
         </div>
         `}
@@ -660,6 +668,15 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
+      // Print-only toggle
+      const printOnlyBtn = card.querySelector('[data-toggle-print-only]');
+      if (printOnlyBtn) {
+        printOnlyBtn.onclick = () => {
+          const p = currentInvoice.products.find(x => x.id === pid);
+          updateProductField(pid, 'print_only', p.print_only ? 0 : 1);
+          renderInvoiceEditor();
+        };
+      }
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
@@ -797,7 +814,7 @@ function addProduct() {
     id: uuid(),
     name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0,
     barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || '',
-    is_new: 0, print_labels: 1, skip_import: 0
+    is_new: 0, print_labels: 1, skip_import: 0, print_only: 0
   });
   dirty = true;
   renderInvoiceEditor();
