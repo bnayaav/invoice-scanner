@@ -410,14 +410,23 @@ function renderInvoiceEditor() {
     const isPositive = profit >= 0;
     const inGroup = productToGroup[p.id] !== undefined;
 
-    const cardHtml = `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.skip_import ? 'is-skipped' : ''} ${p.print_only ? 'is-print-only' : ''}" data-pid="${p.id}">
-        ${p.skip_import ? `
-          <div class="skip-overlay">
-            <span>⊘ מוצר זה ידולג בייבוא</span>
-            <button class="btn-unskip" data-unskip="${p.id}">החזר לייבוא</button>
+    // אם המוצר מדולג — תצוגה מצומצמת
+    if (p.skip_import && !isReadOnly) {
+      productCardsList.push(`
+        <div class="product-card-skipped" data-pid="${p.id}">
+          <div class="skipped-num">${idx + 1}</div>
+          <div class="skipped-info">
+            <span class="skipped-icon">⊘</span>
+            <span class="skipped-name">${escapeHtml(p.name || 'ללא שם')}</span>
           </div>
-        ` : ''}
+          <button class="btn-unskip" data-unskip="${p.id}">החזר לייבוא</button>
+        </div>
+      `);
+      return;
+    }
+
+    const cardHtml = `
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.print_only ? 'is-print-only' : ''}" data-pid="${p.id}">
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
@@ -677,6 +686,14 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
+    });
+
+    // Wire up "החזר לייבוא" buttons on skipped (compact) cards
+    $$('.product-card-skipped [data-unskip]').forEach(btn => {
+      btn.onclick = () => {
+        updateProductField(btn.dataset.unskip, 'skip_import', 0);
+        renderInvoiceEditor();
+      };
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
