@@ -508,6 +508,44 @@ button { cursor: pointer; border: none; }
 .product-markup .value.negative { color: var(--red); }
 .product-markup svg { width: 14px; height: 14px; }
 
+.cost-change-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.cost-change-badge.up {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid var(--amber);
+  color: #92400e;
+}
+.cost-change-badge.down {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #10b981;
+  color: #065f46;
+}
+.cost-change-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.cost-change-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cost-change-text strong {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 700;
+}
+.cost-change-text span {
+  font-size: 11px;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
 .add-product-btn {
   width: 100%;
   padding: 12px;
@@ -785,6 +823,139 @@ button { cursor: pointer; border: none; }
 .btn-unskip:hover {
   background: #991b1b;
   color: white;
+}
+
+/* ─── Run invoice button in history card ──────────────────── */
+.run-invoice-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 3px 12px rgba(21, 128, 61, 0.3);
+  transition: transform 0.1s;
+  cursor: pointer;
+  border: none;
+}
+.run-invoice-btn:active { transform: scale(0.97); }
+
+/* ─── Job monitor modal ───────────────────────────────────── */
+.job-monitor-card {
+  background: linear-gradient(180deg, #fff 0%, #fffbf2 100%);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.job-monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: white;
+}
+.job-monitor-header h3 {
+  margin: 0;
+  font-family: 'Rubik', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+.job-monitor-header .icon-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+.job-status-pill {
+  margin: 14px 20px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-paper);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+}
+.job-status-pill.running {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+}
+.job-status-pill.done {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+}
+.job-status-pill.failed {
+  background: var(--red-bg);
+  color: #991b1b;
+}
+.job-progress {
+  margin: 12px 20px;
+}
+.job-progress-bar {
+  height: 8px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.job-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--amber) 0%, var(--amber-deep) 100%);
+  transition: width 0.4s ease;
+  border-radius: 999px;
+}
+.job-progress-text {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.job-log {
+  flex: 1;
+  margin: 0 20px 14px;
+  background: var(--ink);
+  color: #d1d5db;
+  border-radius: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  min-height: 200px;
+  max-height: 260px;
+}
+.job-log-line {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1px;
+  word-break: break-word;
+}
+.job-log-level {
+  flex-shrink: 0;
+  font-weight: 700;
+  min-width: 36px;
+}
+.job-log-level.INFO { color: #93c5fd; }
+.job-log-level.OK { color: #86efac; }
+.job-log-level.WARN { color: #fcd34d; }
+.job-log-level.ERR { color: #fca5a5; }
+.job-log-level.STEP { color: #c4b5fd; }
+.job-log-msg { color: #f3f4f6; flex: 1; }
+.job-monitor-footer {
+  padding: 0 20px 16px;
+}
+.job-monitor-footer .btn-primary {
+  width: 100%;
 }
 
 /* כרטיס מצומצם למוצר מדולג */
