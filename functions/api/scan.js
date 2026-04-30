@@ -25,7 +25,7 @@ const buildUserPrompt = (pageCount, suppliers = [], categories = []) => {
   "date": "DD/MM/YYYY",
   "currency": "ILS" | "USD" | "EUR",
   "products": [
-    { "name": "שם מוצר מלא (כולל דגם/מק״ט אם רלוונטי)", "quantity": <int>, "cost_price": <number>, "category": "מחלקה מהרשימה או null" }
+    { "name": "שם מוצר מלא (כולל דגם/מק״ט אם רלוונטי)", "quantity": <int>, "cost_price": <number>, "category": "מחלקה מהרשימה או null", "barcode": "ברקוד אם רשום במפורש בחשבונית, אחרת null" }
   ]
 }
 ${suppliersList}${categoriesList}
@@ -37,6 +37,7 @@ ${suppliersList}${categoriesList}
 - אם אין מספר חשבונית או תאריך — החזר null
 - ספק: אם זיהית ספק בחשבונית שמופיע ברשימה, החזר את השם בדיוק כמו ברשימה. אם לא ברשימה, החזר את השם שראית.
 - מחלקה: לכל מוצר, נסה לבחור מחלקה מתאימה מהרשימה. אם לא בטוח, החזר null.
+- ברקוד: רק אם רשום במפורש בחשבונית בעמודה ששמה "ברקוד" (או "barcode"). אסור להשתמש בקוד מוצר, מק״ט, SKU, או כל זיהוי פנימי אחר! אם אין עמודת ברקוד מפורשת — החזר null. ברקוד אמיתי הוא בדרך כלל 8-13 ספרות.
 - בדוק כל מספר פעמיים`;
 };
 
@@ -210,15 +211,24 @@ ${productLines}
     const cost = Number(p.cost_price) || 0;
     const qty = Math.max(1, parseInt(p.quantity) || 1);
     totalCost += cost * qty;
+    // Validate barcode: must be only digits, 8-13 chars (typical barcode format)
+    let barcode = null;
+    if (p.barcode) {
+      const cleaned = String(p.barcode).replace(/[^\d]/g, '');
+      if (cleaned.length >= 8 && cleaned.length <= 13) {
+        barcode = cleaned;
+      }
+    }
     return env.DB.prepare(
-      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, category, supplier_name)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, category, supplier_name, barcode)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
     ).bind(
       uuid(), invoiceId,
       p.name || '', p.model || null,
       qty, cost, idx,
       p.category || null,
-      parsed.supplier || null
+      parsed.supplier || null,
+      barcode
     );
   });
 
