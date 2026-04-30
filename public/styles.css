@@ -417,7 +417,11 @@ button { cursor: pointer; border: none; }
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.product-fields { flex: 1; min-width: 0; }
+.product-fields {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
 .product-name {
   width: 100%;
   background: transparent;
@@ -425,6 +429,15 @@ button { cursor: pointer; border: none; }
   font-family: 'Rubik', sans-serif;
   font-weight: 600; font-size: 15px;
   color: var(--ink);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: right;
+}
+.product-name:focus {
+  text-overflow: clip;
+  overflow: visible;
 }
 .product-model {
   width: 100%;
@@ -661,17 +674,23 @@ button { cursor: pointer; border: none; }
 .product-status-row {
   display: flex; gap: 6px;
   margin-bottom: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
 }
+.product-status-row::-webkit-scrollbar { display: none; }
 .status-toggle {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 7px 10px;
+  padding: 7px 12px;
   border-radius: 10px;
   background: var(--bg-paper);
   border: 1px solid var(--line);
   font-size: 12px; font-weight: 600;
   color: var(--muted);
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .status-toggle.active {
   background: white;
@@ -689,7 +708,6 @@ button { cursor: pointer; border: none; }
 .status-dot.new { background: var(--amber); }
 
 .status-toggle.print-toggle {
-  flex: 1.2;
   gap: 4px;
 }
 .status-toggle.print-toggle.active {
@@ -704,7 +722,6 @@ button { cursor: pointer; border: none; }
 }
 
 .status-toggle.skip-toggle {
-  flex: 0.8;
   background: #fef2f2;
   color: #991b1b;
   border-color: #fecaca;
@@ -714,7 +731,6 @@ button { cursor: pointer; border: none; }
 }
 
 .status-toggle.print-only-toggle {
-  flex: 1;
   background: #f3f4f6;
   color: #6b7280;
   border-color: #e5e7eb;
