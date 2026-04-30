@@ -780,10 +780,59 @@ button { cursor: pointer; border: none; }
   border-radius: 10px;
   font-weight: 600; font-size: 13px;
   cursor: pointer;
+  transition: all 0.15s;
 }
 .btn-unskip:hover {
   background: #991b1b;
   color: white;
+}
+
+/* כרטיס מצומצם למוצר מדולג */
+.product-card-skipped {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  opacity: 0.85;
+}
+.skipped-num {
+  width: 24px; height: 24px;
+  border-radius: 8px;
+  background: white;
+  color: #991b1b;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.skipped-info {
+  flex: 1; min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.skipped-icon {
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.skipped-name {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: line-through;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  flex: 1;
+}
+.product-card-skipped .btn-unskip {
+  padding: 6px 12px;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .product-card.is-new { border-left: 3px solid var(--amber); }
