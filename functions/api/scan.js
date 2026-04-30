@@ -85,7 +85,7 @@ export async function onRequestPost({ request, env }) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-opus-4-7',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content }]
@@ -155,7 +155,7 @@ ${productLines}
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-opus-4-7',
           max_tokens: 1024,
           messages: [{ role: 'user', content: groupingPrompt }]
         })
