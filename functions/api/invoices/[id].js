@@ -62,8 +62,8 @@ export async function onRequestPut({ request, env, params }) {
 
     const inserts = body.products.map((p, idx) =>
       env.DB.prepare(
-        `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, barcode, category, supplier_name, is_new, merged_from, print_labels, skip_import)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, barcode, category, supplier_name, is_new, merged_from, print_labels, skip_import, print_only)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         p.id || uuid(),
         params.id,
@@ -79,7 +79,8 @@ export async function onRequestPut({ request, env, params }) {
         p.is_new ? 1 : 0,
         p.merged_from || null,
         p.print_labels === 0 ? 0 : 1,
-        p.skip_import ? 1 : 0
+        p.skip_import ? 1 : 0,
+        p.print_only ? 1 : 0
       )
     );
     if (inserts.length) await env.DB.batch(inserts);
