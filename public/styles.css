@@ -703,6 +703,55 @@ button { cursor: pointer; border: none; }
   border-color: #e5e7eb;
 }
 
+.status-toggle.skip-toggle {
+  flex: 0.8;
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.status-toggle.skip-toggle:hover {
+  background: #fee2e2;
+}
+
+.product-card.is-skipped {
+  position: relative;
+  opacity: 0.5;
+  background: #f9fafb;
+}
+.product-card.is-skipped > *:not(.skip-overlay) {
+  pointer-events: none;
+  filter: grayscale(0.8);
+}
+.skip-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(254, 242, 242, 0.85);
+  border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px;
+  z-index: 10;
+  backdrop-filter: blur(2px);
+}
+.skip-overlay span {
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 14px;
+  font-family: 'Rubik', sans-serif;
+}
+.btn-unskip {
+  background: white;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 600; font-size: 13px;
+  cursor: pointer;
+}
+.btn-unskip:hover {
+  background: #991b1b;
+  color: white;
+}
+
 .product-card.is-new { border-left: 3px solid var(--amber); }
 .product-card.is-existing { border-left: 3px solid var(--green); }
 
