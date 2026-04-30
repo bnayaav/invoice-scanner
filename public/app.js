@@ -442,7 +442,6 @@ function renderInvoiceEditor() {
           <div class="product-num">${idx + 1}</div>
           <div class="product-fields">
             <input class="product-name" data-field="name" value="${escapeAttr(p.name || '')}" placeholder="שם המוצר" ${isReadOnly ? 'readonly' : ''} />
-            <input class="product-model" data-field="model" value="${escapeAttr(p.model || '')}" placeholder="דגם / מק״ט" ${isReadOnly ? 'readonly' : ''} />
           </div>
           ${isReadOnly ? '' : `<button class="product-remove" data-remove="${p.id}">${SVG.trash}</button>`}
         </div>
