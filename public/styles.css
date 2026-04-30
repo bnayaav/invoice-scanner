@@ -688,6 +688,21 @@ button { cursor: pointer; border: none; }
 .status-dot.existing { background: var(--green); }
 .status-dot.new { background: var(--amber); }
 
+.status-toggle.print-toggle {
+  flex: 1.2;
+  gap: 4px;
+}
+.status-toggle.print-toggle.active {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border-color: #60a5fa;
+}
+.status-toggle.print-toggle:not(.active) {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border-color: #e5e7eb;
+}
+
 .product-card.is-new { border-left: 3px solid var(--amber); }
 .product-card.is-existing { border-left: 3px solid var(--green); }
 
