@@ -56,7 +56,7 @@ const toast = (msg, type = '') => {
 };
 
 // ─── Image compression ──────────────────────────────────────
-async function compressImage(file, maxDim = 1600, quality = 0.82) {
+async function compressImage(file, maxDim = 2400, quality = 0.92) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();
