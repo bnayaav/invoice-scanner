@@ -105,8 +105,6 @@ export async function onRequestDelete({ request, env, params }) {
   const invoice = await env.DB.prepare(`SELECT id, status FROM invoices WHERE id = ?`)
     .bind(params.id).first();
   if (!invoice) return error('חשבונית לא נמצאה', 404);
-  if (invoice.status === 'imported')
-    return error('חשבונית שכבר יובאה לא ניתנת למחיקה', 409);
 
   await env.DB.prepare(`DELETE FROM invoices WHERE id = ?`).bind(params.id).run();
   return json({ ok: true });
