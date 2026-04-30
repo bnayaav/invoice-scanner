@@ -25,7 +25,7 @@ const buildUserPrompt = (pageCount, suppliers = [], categories = []) => {
   "date": "DD/MM/YYYY",
   "currency": "ILS" | "USD" | "EUR",
   "products": [
-    { "name": "שם מוצר", "model": "דגם/מק״ט או null", "quantity": <int>, "cost_price": <number>, "category": "מחלקה מהרשימה או null" }
+    { "name": "שם מוצר מלא (כולל דגם/מק״ט אם רלוונטי)", "quantity": <int>, "cost_price": <number>, "category": "מחלקה מהרשימה או null" }
   ]
 }
 ${suppliersList}${categoriesList}
