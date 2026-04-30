@@ -411,7 +411,13 @@ function renderInvoiceEditor() {
     const inGroup = productToGroup[p.id] !== undefined;
 
     const cardHtml = `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.skip_import ? 'is-skipped' : ''}" data-pid="${p.id}">
+        ${p.skip_import ? `
+          <div class="skip-overlay">
+            <span>⊘ מוצר זה ידולג בייבוא</span>
+            <button class="btn-unskip" data-unskip="${p.id}">החזר לייבוא</button>
+          </div>
+        ` : ''}
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
@@ -434,6 +440,13 @@ function renderInvoiceEditor() {
               <rect x="6" y="14" width="12" height="8"/>
             </svg>
             ${p.print_labels === 0 ? 'ללא הדפסה' : 'מדבקה'}
+          </button>
+          <button class="status-toggle skip-toggle" data-skip="${p.id}" title="דלג על מוצר זה">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            דלג
           </button>
         </div>
         `}
@@ -631,6 +644,22 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
+      // Skip toggle
+      const skipBtn = card.querySelector('[data-skip]');
+      if (skipBtn) {
+        skipBtn.onclick = () => {
+          updateProductField(pid, 'skip_import', 1);
+          renderInvoiceEditor();
+          toast('המוצר ידולג בייבוא', 'success');
+        };
+      }
+      const unskipBtn = card.querySelector('[data-unskip]');
+      if (unskipBtn) {
+        unskipBtn.onclick = () => {
+          updateProductField(pid, 'skip_import', 0);
+          renderInvoiceEditor();
+        };
+      }
     });
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
@@ -768,7 +797,7 @@ function addProduct() {
     id: uuid(),
     name: '', model: '', quantity: 1, cost_price: 0, customer_price: 0,
     barcode: '', category: '', supplier_name: currentInvoice.invoice.supplier || '',
-    is_new: 0, print_labels: 1
+    is_new: 0, print_labels: 1, skip_import: 0
   });
   dirty = true;
   renderInvoiceEditor();
