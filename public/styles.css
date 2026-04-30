@@ -546,6 +546,24 @@ button { cursor: pointer; border: none; }
   font-variant-numeric: tabular-nums;
 }
 
+.supplier-filter-wrap {
+  margin-bottom: 14px;
+}
+#supplier-filter {
+  width: 100%;
+  padding: 11px 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+#supplier-filter:focus { outline: none; border-color: var(--amber); }
+
 .add-product-btn {
   width: 100%;
   padding: 12px;
