@@ -1003,6 +1003,9 @@ async function openBarcodeScanner(productId) {
 
     $('#barcode-status').textContent = 'מכוון את הברקוד למסגרת';
     barcodeReader.decodeFromVideoDevice(rear.deviceId, 'barcode-video', (result, err) => {
+      // אם הסורק נסגר באמצע — לא לעבד תוצאות
+      if (!barcodeReader || !activeBarcodeProductId) return;
+
       if (result) {
         const code = result.getText();
         if (code && code !== lastScannedCode) {
