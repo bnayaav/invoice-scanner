@@ -505,6 +505,21 @@ function renderInvoiceEditor() {
           </div>
         ` : ''}
 
+        ${(isReadOnly && p.previous_cost !== null && p.previous_cost !== undefined && Math.abs(p.previous_cost - cost) > 0.01) ? (() => {
+          const diff = cost - p.previous_cost;
+          const pct = p.previous_cost > 0 ? ((diff / p.previous_cost) * 100).toFixed(0) : 0;
+          const isUp = diff > 0;
+          return `
+            <div class="cost-change-badge ${isUp ? 'up' : 'down'}">
+              <span class="cost-change-icon">${isUp ? '📈' : '📉'}</span>
+              <span class="cost-change-text">
+                <strong>עלות ${isUp ? 'עלתה' : 'ירדה'} ב-${Math.abs(pct)}%</strong>
+                <span>${cur}${p.previous_cost.toFixed(2)} → ${cur}${cost.toFixed(2)}</span>
+              </span>
+            </div>
+          `;
+        })() : ''}
+
         <div class="product-barcode-row">
           <div>
             <label>ברקוד</label>
@@ -960,6 +975,7 @@ async function loadHistory() {
       const profit = (inv.total_revenue || 0) - (inv.total_cost || 0);
       const canDelete = inv.status !== 'imported';
       const hasError = inv.error_message;
+      const canRun = inv.status === 'ready';
       return `
         <div class="history-card ${hasError ? 'has-error' : ''}" data-id="${inv.id}">
           <div class="history-card-top">
@@ -988,14 +1004,21 @@ async function loadHistory() {
               ${profit > 0 ? `<span class="green">+${cur}${profit.toFixed(0)}</span>` : ''}
             </div>
           </div>
+          ${canRun ? `
+            <button class="run-invoice-btn" data-run="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              הרץ עכשיו לקופה
+            </button>
+          ` : ''}
         </div>
       `;
     }).join('');
 
     $$('.history-card').forEach(card => {
       card.onclick = (e) => {
-        // Skip if clicking the delete button
-        if (e.target.closest('[data-del]')) return;
+        if (e.target.closest('[data-del]') || e.target.closest('[data-run]')) return;
         openInvoice(card.dataset.id);
       };
     });
@@ -1009,6 +1032,23 @@ async function loadHistory() {
           await api(`/api/invoices/${id}`, { method: 'DELETE' });
           toast('החשבונית נמחקה', 'success');
           loadHistory();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+    });
+    $$('[data-run]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.run;
+        const supplier = btn.dataset.supplier || 'ללא ספק';
+        if (!confirm(`להריץ את החשבונית של ${supplier} בקופה?`)) return;
+        try {
+          const res = await api('/api/jobs/create', {
+            method: 'POST',
+            body: JSON.stringify({ invoice_id: id })
+          });
+          showJobMonitor(res.job_id, supplier);
         } catch (err) {
           toast(err.message, 'error');
         }
@@ -1246,6 +1286,121 @@ async function addSupplier() {
     renderSuppliersList();
     toast('ספק נוסף', 'success');
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Job monitor (live progress) ────────────────────────────
+let jobPollInterval = null;
+
+function showJobMonitor(jobId, supplierName) {
+  // Create modal
+  let modal = document.getElementById('job-monitor-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'job-monitor-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="job-monitor-card">
+        <div class="job-monitor-header">
+          <h3 id="job-monitor-title">מריץ חשבונית...</h3>
+          <button class="icon-btn" id="job-monitor-close" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="job-status-pill" id="job-status-pill">⏳ ממתין למחשב פנוי...</div>
+        <div class="job-progress">
+          <div class="job-progress-bar"><div class="job-progress-fill" id="job-progress-fill"></div></div>
+          <div class="job-progress-text" id="job-progress-text">0 / 0</div>
+        </div>
+        <div class="job-log" id="job-log"></div>
+        <div class="job-monitor-footer">
+          <button class="btn-primary" id="job-done-btn" style="display:none;">סגור</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('job-monitor-close').onclick = () => closeJobMonitor();
+    document.getElementById('job-done-btn').onclick = () => closeJobMonitor();
+  }
+  modal.classList.remove('hidden');
+  document.getElementById('job-monitor-title').textContent = `מריץ: ${supplierName}`;
+  document.getElementById('job-log').innerHTML = '';
+  document.getElementById('job-progress-fill').style.width = '0%';
+  document.getElementById('job-progress-text').textContent = '0 / 0';
+  document.getElementById('job-status-pill').textContent = '⏳ ממתין למחשב פנוי...';
+  document.getElementById('job-status-pill').className = 'job-status-pill';
+  document.getElementById('job-monitor-close').style.display = 'none';
+  document.getElementById('job-done-btn').style.display = 'none';
+
+  // Start polling
+  if (jobPollInterval) clearInterval(jobPollInterval);
+  pollJobStatus(jobId);
+  jobPollInterval = setInterval(() => pollJobStatus(jobId), 1500);
+}
+
+async function pollJobStatus(jobId) {
+  try {
+    const data = await api(`/api/jobs/${jobId}`);
+    const pill = document.getElementById('job-status-pill');
+    const fill = document.getElementById('job-progress-fill');
+    const text = document.getElementById('job-progress-text');
+    const logEl = document.getElementById('job-log');
+    const closeBtn = document.getElementById('job-monitor-close');
+    const doneBtn = document.getElementById('job-done-btn');
+
+    // Update progress bar
+    const total = data.total_count || 0;
+    const idx = data.current_idx || 0;
+    if (total > 0) {
+      const pct = Math.min(100, (idx / total) * 100);
+      fill.style.width = `${pct}%`;
+    }
+    text.textContent = `${idx} / ${total}`;
+
+    // Update status pill
+    if (data.status === 'pending') {
+      pill.textContent = '⏳ ממתין למחשב פנוי...';
+      pill.className = 'job-status-pill';
+    } else if (data.status === 'running') {
+      pill.textContent = `▶ רץ במחשב ${data.worker_id || '?'}`;
+      pill.className = 'job-status-pill running';
+    } else if (data.status === 'done') {
+      pill.textContent = '✓ הושלם בהצלחה';
+      pill.className = 'job-status-pill done';
+      clearInterval(jobPollInterval);
+      jobPollInterval = null;
+      closeBtn.style.display = 'flex';
+      doneBtn.style.display = 'block';
+      loadHistory();
+    } else if (data.status === 'failed') {
+      pill.textContent = `✗ נכשל: ${data.error_message || 'שגיאה'}`;
+      pill.className = 'job-status-pill failed';
+      clearInterval(jobPollInterval);
+      jobPollInterval = null;
+      closeBtn.style.display = 'flex';
+      doneBtn.style.display = 'block';
+      loadHistory();
+    }
+
+    // Update log
+    if (Array.isArray(data.log)) {
+      logEl.innerHTML = data.log.slice(-200).map(e => `
+        <div class="job-log-line">
+          <span class="job-log-level ${escapeAttr(e.level || 'INFO')}">${escapeHtml(e.level || 'INFO')}</span>
+          <span class="job-log-msg">${escapeHtml(e.msg || '')}</span>
+        </div>
+      `).join('');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  } catch (e) {
+    // Ignore transient errors
+  }
+}
+
+function closeJobMonitor() {
+  if (jobPollInterval) clearInterval(jobPollInterval);
+  jobPollInterval = null;
+  const modal = document.getElementById('job-monitor-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // ─── PWA install prompt ────────────────────────────────────
