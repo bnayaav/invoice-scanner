@@ -7,7 +7,7 @@ let currentUser = null;
 let pages = [];                  // [{id, dataUrl, file, type}]
 let currentInvoice = null;       // {invoice, products}
 let activeTab = 'new';
-let historyFilter = { status: '', q: '' };
+let historyFilter = { status: '', q: '', supplier: '' };
 let categories = [];             // loaded once after login
 let suppliers = [];              // loaded once after login
 let suggestedGroups = [];        // groups detected by AI after scan
@@ -958,12 +958,53 @@ async function loadHistory() {
     const params = new URLSearchParams();
     if (historyFilter.status) params.set('status', historyFilter.status);
     if (historyFilter.q) params.set('q', historyFilter.q);
-    const { invoices } = await api(`/api/invoices?${params}`);
+    const { invoices: allInvoices } = await api(`/api/invoices?${params}`);
+
+    // Build supplier list (unique, sorted)
+    const supplierSet = new Set();
+    allInvoices.forEach(inv => {
+      if (inv.supplier && inv.supplier.trim()) supplierSet.add(inv.supplier.trim());
+    });
+    const supplierList = [...supplierSet].sort((a, b) => a.localeCompare(b, 'he'));
+
+    // Inject supplier dropdown if not yet there
+    let supplierFilter = $('#supplier-filter');
+    if (!supplierFilter) {
+      const filterPills = document.querySelector('#tab-history .filter-pills');
+      if (filterPills) {
+        const wrap = document.createElement('div');
+        wrap.className = 'supplier-filter-wrap';
+        wrap.innerHTML = `
+          <select id="supplier-filter">
+            <option value="">— כל הספקים —</option>
+          </select>
+        `;
+        filterPills.parentNode.insertBefore(wrap, filterPills.nextSibling);
+        supplierFilter = $('#supplier-filter');
+        supplierFilter.onchange = (e) => {
+          historyFilter.supplier = e.target.value;
+          loadHistory();
+        };
+      }
+    }
+
+    // Update options if changed
+    if (supplierFilter) {
+      const currentVal = historyFilter.supplier;
+      supplierFilter.innerHTML = `<option value="">— כל הספקים —</option>` +
+        supplierList.map(s => `<option value="${escapeAttr(s)}" ${s === currentVal ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+    }
+
+    // Apply supplier filter
+    const invoices = historyFilter.supplier
+      ? allInvoices.filter(inv => (inv.supplier || '').trim() === historyFilter.supplier)
+      : allInvoices;
+
     if (!invoices.length) {
       list.innerHTML = `
         <div class="empty-state">
           ${SVG.receipt}
-          <p>לא נמצאו חשבוניות${historyFilter.q ? ' תואמות' : ' עדיין'}</p>
+          <p>לא נמצאו חשבוניות${historyFilter.q || historyFilter.supplier ? ' תואמות' : ' עדיין'}</p>
         </div>`;
       return;
     }
@@ -973,7 +1014,6 @@ async function loadHistory() {
         day: 'numeric', month: 'short', year: 'numeric'
       });
       const profit = (inv.total_revenue || 0) - (inv.total_cost || 0);
-      const canDelete = inv.status !== 'imported';
       const hasError = inv.error_message;
       const canRun = inv.status === 'ready';
       return `
@@ -985,7 +1025,7 @@ async function loadHistory() {
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="history-status status-${inv.status}">${statusLabel(inv.status)}</span>
-              ${canDelete ? `<button class="history-delete-btn" data-del="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">${SVG.trash}</button>` : ''}
+              <button class="history-delete-btn" data-del="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">${SVG.trash}</button>
             </div>
           </div>
           ${hasError ? `
