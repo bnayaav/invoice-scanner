@@ -1044,6 +1044,16 @@ async function loadHistory() {
               ${profit > 0 ? `<span class="green">+${cur}${profit.toFixed(0)}</span>` : ''}
             </div>
           </div>
+          ${inv.cost_changes && inv.cost_changes.changed_count > 0 ? `
+            <div class="history-cost-changes">
+              ${inv.cost_changes.up_count > 0 ? `
+                <span class="cost-chip up">📈 ${inv.cost_changes.up_count} עלו</span>
+              ` : ''}
+              ${inv.cost_changes.down_count > 0 ? `
+                <span class="cost-chip down">📉 ${inv.cost_changes.down_count} ירדו</span>
+              ` : ''}
+            </div>
+          ` : ''}
           ${canRun ? `
             <button class="run-invoice-btn" data-run="${inv.id}" data-supplier="${escapeAttr(inv.supplier || '')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
