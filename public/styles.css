@@ -864,6 +864,32 @@ button { cursor: pointer; border: none; }
 }
 .run-invoice-btn:active { transform: scale(0.97); }
 
+.history-cost-changes {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.cost-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cost-chip.up {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+.cost-chip.down {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+  border: 1px solid #10b981;
+}
+
 /* ─── Job monitor modal ───────────────────────────────────── */
 .job-monitor-card {
   background: linear-gradient(180deg, #fff 0%, #fffbf2 100%);
