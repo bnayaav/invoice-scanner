@@ -38,5 +38,34 @@ export async function onRequestGet({ request, env }) {
   binds.push(limit, offset);
 
   const { results } = await env.DB.prepare(sql).bind(...binds).all();
+
+  // Add cost change summary for imported invoices
+  const importedIds = results.filter(r => r.status === 'imported').map(r => r.id);
+  const costChanges = {};
+  if (importedIds.length > 0) {
+    const placeholders = importedIds.map(() => '?').join(',');
+    const { results: changes } = await env.DB.prepare(
+      `SELECT invoice_id,
+              SUM(CASE WHEN previous_cost IS NOT NULL AND previous_cost > 0 AND ABS(cost_price - previous_cost) > 0.01 THEN 1 ELSE 0 END) AS changed_count,
+              SUM(CASE WHEN previous_cost IS NOT NULL AND previous_cost > 0 AND cost_price > previous_cost + 0.01 THEN 1 ELSE 0 END) AS up_count,
+              SUM(CASE WHEN previous_cost IS NOT NULL AND previous_cost > 0 AND cost_price < previous_cost - 0.01 THEN 1 ELSE 0 END) AS down_count
+       FROM products
+       WHERE invoice_id IN (${placeholders})
+       GROUP BY invoice_id`
+    ).bind(...importedIds).all();
+    for (const c of changes) {
+      costChanges[c.invoice_id] = {
+        changed_count: c.changed_count || 0,
+        up_count: c.up_count || 0,
+        down_count: c.down_count || 0,
+      };
+    }
+  }
+  for (const inv of results) {
+    if (costChanges[inv.id]) {
+      inv.cost_changes = costChanges[inv.id];
+    }
+  }
+
   return json({ invoices: results, limit, offset });
 }
