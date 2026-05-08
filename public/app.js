@@ -879,8 +879,11 @@ async function mergeGroup(groupIdx) {
     return;
   }
 
-  // הצעת שם משותף — השם של המוצר הראשון
-  const defaultName = memberProducts[0].name || '';
+  // הצעת שם משותף — השם המאוחד מה-AI (חיתוך השמות, ללא האטריבוט המבדיל),
+  // אחרת fallback לשם של המוצר הראשון
+  const defaultName = (g.unified_name && g.unified_name.trim())
+    ? g.unified_name.trim()
+    : (memberProducts[0].name || '');
   const newName = prompt('שם המוצר המאוחד:', defaultName);
   if (newName === null) return; // ביטול
   if (!newName.trim()) {
@@ -900,6 +903,15 @@ async function mergeGroup(groupIdx) {
   first.cost_price = Math.round(avgCost * 100) / 100;
   first.merged_from = JSON.stringify(g.product_ids);
   // ה-customer_price נשאר אם יש, אחרת 0
+
+  // ברקוד: שומרים ברקוד אחד של אחד מהמוצרים בקבוצה — לא ממציאים, לא מחברים.
+  // אם לראשון יש ברקוד — נשאר. אחרת לוקחים את הראשון בקבוצה שיש לו ברקוד.
+  if (!first.barcode || !String(first.barcode).trim()) {
+    const memberWithBarcode = memberProducts.find(p => p.barcode && String(p.barcode).trim());
+    if (memberWithBarcode) {
+      first.barcode = memberWithBarcode.barcode;
+    }
+  }
 
   // הסרת השאר
   const idsToRemove = g.product_ids.filter(id => id !== first.id);
