@@ -1,6 +1,6 @@
 // functions/api/scan.js
 // Receives base64 invoice images, calls Claude vision API, parses products,
-// stores everything in D1, and returns the new invoice id + extracted data.
+// looks up barcodes in master_products, stores everything in D1.
 
 import { json, error, uuid, requireUser } from '../_utils.js';
 
@@ -86,7 +86,6 @@ export async function onRequestPost({ request, env }) {
   if (!pages || pages.length === 0) return error('לא נשלחו תמונות', 400);
   if (pages.length > MAX_PAGES) return error(`מקסימום ${MAX_PAGES} עמודים`, 400);
 
-  // Load suppliers + categories so Claude can match against them
   const [suppliersRes, categoriesRes] = await Promise.all([
     env.DB.prepare(`SELECT name FROM suppliers WHERE active = 1 ORDER BY name`).all(),
     env.DB.prepare(`SELECT name FROM categories ORDER BY sort_order, name`).all(),
@@ -94,7 +93,6 @@ export async function onRequestPost({ request, env }) {
   const supplierNames = (suppliersRes.results || []).map(r => r.name);
   const categoryNames = (categoriesRes.results || []).map(r => r.name);
 
-  // Validate each page
   const content = [];
   for (const p of pages) {
     if (!p?.media_type || !p?.data) return error('פורמט תמונה לא תקין', 400);
@@ -106,7 +104,6 @@ export async function onRequestPost({ request, env }) {
   }
   content.push({ type: 'text', text: buildUserPrompt(pages.length, supplierNames, categoryNames) });
 
-  // Call Claude API
   let aiResp;
   try {
     aiResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -136,7 +133,6 @@ export async function onRequestPost({ request, env }) {
   const textBlock = (aiData.content || []).find(b => b.type === 'text');
   if (!textBlock) return error('לא התקבל תוכן מ-Claude', 502);
 
-  // Parse JSON from response
   let raw = textBlock.text.trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '');
@@ -150,10 +146,34 @@ export async function onRequestPost({ request, env }) {
 
   const productsArr = Array.isArray(parsed.products) ? parsed.products : [];
 
-  // === שלב 2: זיהוי קבוצות "אותו מוצר בבסיס" + הצעת שם מאוחד ===
-  // שולחים ל-Claude את רשימת המוצרים ושואלים אילו מהם הם בעצם אותו מוצר
-  // (לדוגמה צבעים שונים של אותו פריט, או שורת בונוס 10+1)
-  // עבור כל קבוצה, ה-AI גם מציע שם מאוחד שהוא "החיתוך" של השמות (ללא האטריבוט המבדיל)
+  // ════════════════════════════════════════════════════════════
+  // Master products lookup by barcode
+  // ════════════════════════════════════════════════════════════
+  const masterMatches = {}; // normalized barcode -> master row
+  const barcodesToLookup = productsArr
+    .map(p => p.barcode)
+    .filter(b => b !== null && b !== undefined)
+    .map(b => String(b).replace(/\D/g, ''))
+    .filter(b => b.length >= 8 && b.length <= 13);
+
+  if (barcodesToLookup.length > 0) {
+    try {
+      const placeholders = barcodesToLookup.map(() => '?').join(',');
+      const { results: matches } = await env.DB.prepare(
+        `SELECT barcode, name, customer_price, cost_price, product_code, manufacturer
+         FROM master_products
+         WHERE barcode IN (${placeholders})`
+      ).bind(...barcodesToLookup).all();
+
+      for (const m of (matches || [])) {
+        masterMatches[m.barcode] = m;
+      }
+    } catch (e) {
+      // If table doesn't exist yet, continue without matches.
+    }
+  }
+
+  // === שלב 2: זיהוי קבוצות ===
   let groups = [];
   if (productsArr.length >= 2) {
     try {
@@ -235,13 +255,9 @@ unified_name חייב להיות **החיתוך המילולי** של השמות
               Array.isArray(g.indices) && g.indices.length >= 2
             );
           }
-        } catch (e) {
-          // אם הפענוח נכשל, פשוט ממשיכים בלי קבוצות
-        }
+        } catch (e) {}
       }
-    } catch (e) {
-      // אם זיהוי הקבוצות נכשל, ממשיכים בלעדיו
-    }
+    } catch (e) {}
   }
 
   // Insert invoice
@@ -265,12 +281,12 @@ unified_name חייב להיות **החיתוך המילולי** של השמות
     now, now
   ).run();
 
-  // Insert products in batch
+  // Insert products in batch — use master match data when available
   const productInserts = productsArr.map((p, idx) => {
     const cost = Number(p.cost_price) || 0;
     const qty = Math.max(1, parseInt(p.quantity) || 1);
     totalCost += cost * qty;
-    // Validate barcode: must be only digits, 8-13 chars (typical barcode format)
+
     let barcode = null;
     if (p.barcode) {
       const cleaned = String(p.barcode).replace(/[^\d]/g, '');
@@ -278,16 +294,30 @@ unified_name חייב להיות **החיתוך המילולי** של השמות
         barcode = cleaned;
       }
     }
+
+    const masterMatch = barcode ? masterMatches[barcode] : null;
+
+    // If matched in master: pre-fill customer_price, mark as NOT new
+    let customerPrice = 0;
+    let isNewFlag = 1;
+    if (masterMatch) {
+      isNewFlag = 0;
+      if (masterMatch.customer_price > 0) {
+        customerPrice = masterMatch.customer_price;
+      }
+    }
+
     return env.DB.prepare(
-      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, category, supplier_name, barcode)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
+      `INSERT INTO products (id, invoice_id, name, model, quantity, cost_price, customer_price, sort_order, category, supplier_name, barcode, is_new)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       uuid(), invoiceId,
       p.name || '', p.model || null,
-      qty, cost, idx,
+      qty, cost, customerPrice, idx,
       p.category || null,
       parsed.supplier || null,
-      barcode
+      barcode,
+      isNewFlag
     );
   });
 
@@ -297,14 +327,33 @@ unified_name חייב להיות **החיתוך המילולי** של השמות
       .bind(totalCost, invoiceId).run();
   }
 
-  // Return the new invoice with products
   const invoice = await env.DB.prepare(`SELECT * FROM invoices WHERE id = ?`)
     .bind(invoiceId).first();
   const { results: products } = await env.DB
     .prepare(`SELECT * FROM products WHERE invoice_id = ? ORDER BY sort_order ASC`)
     .bind(invoiceId).all();
 
-  // המרת ה-groups ל-product IDs (במקום אינדקסים) + שמירת unified_name
+  // Attach master_match info to each product for frontend display
+  for (const p of products) {
+    if (p.barcode && masterMatches[p.barcode]) {
+      const m = masterMatches[p.barcode];
+      const hasCostAlert = (m.cost_price > 0 && Number(p.cost_price) > 0)
+        ? (Math.abs(Number(p.cost_price) - m.cost_price) / m.cost_price > 0.3)
+        : false;
+
+      p.master_match = {
+        name: m.name,
+        customer_price: m.customer_price,
+        cost_price: m.cost_price,
+        product_code: m.product_code,
+        manufacturer: m.manufacturer,
+        price_was_autofilled: (Number(p.customer_price) > 0 && Number(p.customer_price) === Number(m.customer_price)),
+        cost_alert: hasCostAlert,
+        previous_cost: m.cost_price,
+      };
+    }
+  }
+
   const groupsWithIds = groups.map(g => ({
     product_ids: g.indices.map(i => products[i]?.id).filter(Boolean),
     unified_name: g.unified_name || null,
