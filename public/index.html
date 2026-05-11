@@ -9,6 +9,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231a1f2e'/%3E%3Cpath d='M30 28h40v44L60 64l-10 8-10-8-10 8z' fill='%23fcd34d'/%3E%3C/svg%3E" />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -98,6 +99,13 @@
           </div>
         </div>
         <div style="display:flex; gap:6px;">
+          <button id="master-products-btn" class="icon-btn hidden" title="מוצרים מהקופה">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </button>
           <button id="suppliers-btn" class="icon-btn hidden" title="ספקים">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>
@@ -125,12 +133,10 @@
       </nav>
     </header>
 
-    <!-- ─── Tab: New invoice ─── -->
     <section id="tab-new" class="tab-panel active">
       <div id="new-content"></div>
     </section>
 
-    <!-- ─── Tab: History ─── -->
     <section id="tab-history" class="tab-panel">
       <div class="search-bar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -148,7 +154,6 @@
     </section>
   </main>
 
-  <!-- ─── Loading overlay ─── -->
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="loader-card">
       <div class="loader-spinner"></div>
@@ -156,10 +161,8 @@
     </div>
   </div>
 
-  <!-- ─── Toast ─── -->
   <div id="toast" class="toast hidden"></div>
 
-  <!-- Install banner (shown when app is installable) -->
   <div id="install-banner" class="install-banner hidden">
     <div class="install-banner-content">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -177,7 +180,6 @@
     </div>
   </div>
 
-  <!-- iOS install instructions modal -->
   <div id="ios-install-modal" class="modal-overlay hidden">
     <div class="barcode-modal">
       <div class="barcode-header">
@@ -197,11 +199,9 @@
     </div>
   </div>
 
-  <!-- File inputs (hidden, triggered programmatically) -->
   <input id="file-input" type="file" accept="image/*" multiple hidden />
   <input id="camera-input" type="file" accept="image/*" capture="environment" multiple hidden />
 
-  <!-- Barcode scanner modal -->
   <div id="barcode-modal" class="modal-overlay hidden">
     <div class="barcode-modal">
       <div class="barcode-header">
@@ -220,7 +220,6 @@
     </div>
   </div>
 
-  <!-- Suppliers management modal -->
   <div id="suppliers-modal" class="modal-overlay hidden">
     <div class="categories-modal">
       <div class="barcode-header">
@@ -240,7 +239,6 @@
     </div>
   </div>
 
-  <!-- Categories management modal -->
   <div id="categories-modal" class="modal-overlay hidden">
     <div class="categories-modal">
       <div class="barcode-header">
@@ -254,6 +252,41 @@
         <button class="btn-primary" id="add-category-btn">הוסף</button>
       </div>
       <div id="categories-list" class="categories-list"></div>
+    </div>
+  </div>
+
+  <!-- Master products import modal -->
+  <div id="master-modal" class="modal-overlay hidden">
+    <div class="categories-modal">
+      <div class="barcode-header">
+        <h3>מוצרי הקופה</h3>
+        <button class="icon-btn" id="master-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="padding: 16px;">
+        <div id="master-stats-box" style="background:#f5f5f0; border-radius:12px; padding:16px; margin-bottom:14px; text-align:center;">
+          טוען...
+        </div>
+        <p style="font-size:13px; color:#6b6b65; line-height:1.6; margin-bottom:12px;">
+          העלה קובץ אקסל עם רשימת המוצרים בקופה.<br>
+          <strong>עמודות נדרשות:</strong> קוד פריט, שם פריט, מחיר, עלות, ברקוד, מלאי, תיאור נוסף, מבצע, יצרן, סדרה
+        </p>
+        <p style="font-size:12px; color:#dc2626; line-height:1.5; margin-bottom:14px;">
+          ⚠ פעולה זו תחליף את כל המוצרים הקיימים במאסטר.
+        </p>
+        <input id="master-file-input" type="file" accept=".xlsx,.xls" hidden />
+        <button class="btn-primary" id="master-upload-btn" style="width:100%;">
+          📤 העלה קובץ אקסל
+        </button>
+        <div id="master-progress" class="hidden" style="margin-top:14px;">
+          <div style="background:#e5e3dc; border-radius:8px; height:8px; overflow:hidden;">
+            <div id="master-progress-fill" style="background:#1d4ed8; height:100%; width:0%; transition:width 0.3s;"></div>
+          </div>
+          <p id="master-progress-text" style="font-size:13px; margin-top:8px; color:#6b6b65; text-align:center;"></p>
+        </div>
+        <div id="master-result"></div>
+      </div>
     </div>
   </div>
 
