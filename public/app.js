@@ -13,6 +13,7 @@ let suppliers = [];              // loaded once after login
 let suggestedGroups = [];        // groups detected by AI after scan
 let barcodeReader = null;        // ZXing reader instance
 let activeBarcodeProductId = null;
+let masterStats = { total: 0, last_import: null };  // master products stats
 
 // ─── Helpers ─────────────────────────────────────────────────
 const $  = (sel) => document.querySelector(sel);
@@ -134,10 +135,14 @@ function showApp() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#user-greeting').textContent = `שלום, ${currentUser.display_name}`;
-  if (currentUser.role === 'admin') $('#categories-btn').classList.remove('hidden');
-  if (currentUser.role === 'admin') $('#suppliers-btn')?.classList.remove('hidden');
+  if (currentUser.role === 'admin') {
+    $('#categories-btn').classList.remove('hidden');
+    $('#suppliers-btn')?.classList.remove('hidden');
+    $('#master-products-btn')?.classList.remove('hidden');
+  }
   loadCategories();
   loadSuppliers();
+  loadMasterStats();
   renderNewTab();
 }
 
@@ -154,6 +159,12 @@ async function loadSuppliers() {
     suppliers = sups || [];
     renderSuppliersDatalist();
   } catch { suppliers = []; }
+}
+
+async function loadMasterStats() {
+  try {
+    masterStats = await api('/api/master/stats');
+  } catch { masterStats = { total: 0, last_import: null }; }
 }
 
 function renderSuppliersDatalist() {
@@ -296,7 +307,6 @@ function renderNewTab() {
   }
 }
 
-// File input handlers
 async function handleFiles(files) {
   const list = Array.from(files).filter(f => f.type.startsWith('image/'));
   if (!list.length) return;
@@ -334,11 +344,11 @@ async function scanInvoice() {
     currentInvoice = { invoice: result.invoice, products: result.products };
     suggestedGroups = result.suggested_groups || [];
     pages = [];
-    if (suggestedGroups.length > 0) {
-      toast(`נמצאו ${result.products.length} מוצרים, ${suggestedGroups.length} קבוצות לאיחוד`, 'success');
-    } else {
-      toast(`נמצאו ${result.products.length} מוצרים`, 'success');
-    }
+    const matchCount = result.products.filter(p => p.master_match).length;
+    let msg = `נמצאו ${result.products.length} מוצרים`;
+    if (matchCount > 0) msg += ` · ${matchCount} מוכרים מהקופה`;
+    if (suggestedGroups.length > 0) msg += ` · ${suggestedGroups.length} קבוצות`;
+    toast(msg, 'success');
     renderInvoiceEditor();
   } catch (e) {
     $('#scan-error').innerHTML = `
@@ -357,12 +367,10 @@ function renderInvoiceEditor() {
   const filledCount = products.filter(p => Number(p.customer_price) > 0).length;
   const isReadOnly = inv.status === 'imported';
 
-  // בנה מפת product_id → group_index לסימון מוצרים בקבוצה
   const productToGroup = {};
   suggestedGroups.forEach((g, gi) => {
     g.product_ids.forEach(pid => { productToGroup[pid] = gi; });
   });
-  // איזה מוצרים הם הראשונים בקבוצה (כדי להציג כרטיס פעם אחת לפני)
   const firstInGroup = {};
   suggestedGroups.forEach((g, gi) => {
     if (g.product_ids[0]) firstInGroup[g.product_ids[0]] = gi;
@@ -373,7 +381,6 @@ function renderInvoiceEditor() {
     const groupIdx = productToGroup[p.id];
     const isFirstInGroup = firstInGroup[p.id] !== undefined;
 
-    // אם זה המוצר הראשון בקבוצה — הוסף כרטיס קבוצה לפניו
     if (isFirstInGroup) {
       const g = suggestedGroups[groupIdx];
       const memberProducts = products.filter(prod => g.product_ids.includes(prod.id));
@@ -410,7 +417,6 @@ function renderInvoiceEditor() {
     const isPositive = profit >= 0;
     const inGroup = productToGroup[p.id] !== undefined;
 
-    // אם המוצר מדולג — תצוגה מצומצמת
     if (p.skip_import && !isReadOnly) {
       productCardsList.push(`
         <div class="product-card-skipped" data-pid="${p.id}">
@@ -425,14 +431,50 @@ function renderInvoiceEditor() {
       return;
     }
 
+    // ── Master match banner (NEW) ──
+    const masterMatchHtml = (p.master_match && !p.master_match_dismissed) ? `
+      <div class="master-match-banner" style="background:#fef3c7; border:1px solid #fbbf24; border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="font-size:16px;">⚠</span>
+          <strong>קיים בקופה</strong>
+        </div>
+        <div style="color:#1a1a18; margin-bottom:8px; font-weight:500; line-height:1.4;">
+          ${escapeHtml(p.master_match.name)}
+        </div>
+        ${p.master_match.customer_price > 0 ? `
+          <div style="font-size:12px; color:#6b6b65; margin-bottom:8px;">
+            מחיר ללקוח בקופה: <strong>${cur}${Number(p.master_match.customer_price).toFixed(0)}</strong>
+            ${p.master_match.price_was_autofilled ? ' <span style="color:#16a34a;">✓ אוכלס</span>' : ''}
+          </div>
+        ` : ''}
+        ${p.master_match.cost_alert ? `
+          <div style="background:#fee2e2; border:1px solid #fca5a5; padding:6px 10px; border-radius:8px; font-size:12px; color:#991b1b; margin-bottom:8px;">
+            ⚠ עלות שונה משמעותית: היה ${cur}${Number(p.master_match.previous_cost).toFixed(2)} → ${cur}${Number(p.cost_price).toFixed(2)}
+          </div>
+        ` : ''}
+        ${(p.name !== p.master_match.name && !isReadOnly) ? `
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button data-use-master="${p.id}" style="flex:1; min-width:140px; background:#1d4ed8; color:#fff; border:none; padding:8px 10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+              השתמש בשם של הקופה
+            </button>
+            <button data-keep-invoice="${p.id}" style="background:transparent; color:#6b6b65; border:1px solid #e5e3dc; padding:8px 10px; border-radius:8px; font-size:12px; cursor:pointer;">
+              השאר את שם החשבונית
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    ` : '';
+
     const cardHtml = `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.print_only ? 'is-print-only' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.print_only ? 'is-print-only' : ''} ${p.master_match ? 'has-master-match' : ''}" data-pid="${p.id}">
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
             <span>${escapeHtml(p.error_message)}</span>
           </div>
         ` : ''}
+
+        ${masterMatchHtml}
 
         ${isReadOnly ? '' : `
         <div class="product-status-row">
@@ -633,7 +675,6 @@ function renderInvoiceEditor() {
     </div>
   `;
 
-  // Wire up
   $('#back-to-upload').onclick = async () => {
     if (!isReadOnly && hasUnsavedEdits()) {
       if (!confirm('לחזור בלי לשמור?')) return;
@@ -645,7 +686,6 @@ function renderInvoiceEditor() {
   };
 
   if (!isReadOnly) {
-    // Field updates
     $$('[data-meta]').forEach(input => {
       input.oninput = () => { currentInvoice.invoice[input.dataset.meta] = input.value; };
     });
@@ -659,14 +699,12 @@ function renderInvoiceEditor() {
       if (rm) rm.onclick = () => removeProduct(pid);
       const scanBtn = card.querySelector('[data-scan]');
       if (scanBtn) scanBtn.onclick = () => openBarcodeScanner(pid);
-      // Status toggle (new/existing)
       card.querySelectorAll('[data-set-new]').forEach(btn => {
         btn.onclick = () => {
           updateProductField(pid, 'is_new', btn.dataset.value === '1' ? 1 : 0);
           renderInvoiceEditor();
         };
       });
-      // Print labels toggle
       const printBtn = card.querySelector('[data-toggle-print]');
       if (printBtn) {
         printBtn.onclick = () => {
@@ -676,7 +714,6 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
-      // Skip toggle
       const skipBtn = card.querySelector('[data-skip]');
       if (skipBtn) {
         skipBtn.onclick = () => {
@@ -692,7 +729,6 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
-      // Print-only toggle
       const printOnlyBtn = card.querySelector('[data-toggle-print-only]');
       if (printOnlyBtn) {
         printOnlyBtn.onclick = () => {
@@ -701,9 +737,32 @@ function renderInvoiceEditor() {
           renderInvoiceEditor();
         };
       }
+
+      // ── Master match buttons (NEW) ──
+      const useMasterBtn = card.querySelector('[data-use-master]');
+      if (useMasterBtn) {
+        useMasterBtn.onclick = () => {
+          const p = currentInvoice.products.find(x => x.id === pid);
+          if (p?.master_match?.name) {
+            updateProductField(pid, 'name', p.master_match.name);
+            p.master_match_dismissed = true;
+            renderInvoiceEditor();
+            toast('השם עודכן לפי הקופה', 'success');
+          }
+        };
+      }
+      const keepInvoiceBtn = card.querySelector('[data-keep-invoice]');
+      if (keepInvoiceBtn) {
+        keepInvoiceBtn.onclick = () => {
+          const p = currentInvoice.products.find(x => x.id === pid);
+          if (p) {
+            p.master_match_dismissed = true;
+            renderInvoiceEditor();
+          }
+        };
+      }
     });
 
-    // Wire up "החזר לייבוא" buttons on skipped (compact) cards
     $$('.product-card-skipped [data-unskip]').forEach(btn => {
       btn.onclick = () => {
         updateProductField(btn.dataset.unskip, 'skip_import', 0);
@@ -713,7 +772,6 @@ function renderInvoiceEditor() {
     $('#add-product').onclick = addProduct;
     $('#bulk-apply').onclick = applyBulkMarkup;
 
-    // Bulk status mark buttons
     if ($('#mark-all-existing')) {
       $('#mark-all-existing').onclick = () => {
         currentInvoice.products.forEach(p => p.is_new = 0);
@@ -731,7 +789,6 @@ function renderInvoiceEditor() {
       };
     }
 
-    // Group merge / dismiss buttons
     $$('[data-merge-group]').forEach(btn => {
       btn.onclick = () => mergeGroup(parseInt(btn.dataset.mergeGroup));
     });
@@ -771,7 +828,6 @@ function updateProductField(pid, field, value) {
   }
   dirty = true;
 
-  // Live update of UI for price-related fields
   if (field === 'customer_price' || field === 'cost_price') {
     refreshSummary();
     refreshProductCard(pid);
@@ -809,7 +865,6 @@ function refreshProductCard(pid) {
   const custInput = card.querySelector('.customer-price');
   if (custInput) custInput.classList.toggle('filled', hasPrice);
 
-  // Update markup section
   let markupEl = card.querySelector('.product-markup');
   if (cost > 0 && cust > 0) {
     const markup = (((cust - cost) / cost) * 100).toFixed(0);
@@ -879,33 +934,26 @@ async function mergeGroup(groupIdx) {
     return;
   }
 
-  // הצעת שם משותף — השם המאוחד מה-AI (חיתוך השמות, ללא האטריבוט המבדיל),
-  // אחרת fallback לשם של המוצר הראשון
   const defaultName = (g.unified_name && g.unified_name.trim())
     ? g.unified_name.trim()
     : (memberProducts[0].name || '');
   const newName = prompt('שם המוצר המאוחד:', defaultName);
-  if (newName === null) return; // ביטול
+  if (newName === null) return;
   if (!newName.trim()) {
     toast('שם לא יכול להיות ריק', 'error');
     return;
   }
 
-  // חישוב כמות ועלות מאוחדים
   const totalQty = memberProducts.reduce((s, p) => s + (Number(p.quantity) || 1), 0);
   const totalCost = memberProducts.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
   const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
 
-  // המוצר המאוחד יחליף את הראשון, השאר יוסרו
   const first = memberProducts[0];
   first.name = newName.trim();
   first.quantity = totalQty;
   first.cost_price = Math.round(avgCost * 100) / 100;
   first.merged_from = JSON.stringify(g.product_ids);
-  // ה-customer_price נשאר אם יש, אחרת 0
 
-  // ברקוד: שומרים ברקוד אחד של אחד מהמוצרים בקבוצה — לא ממציאים, לא מחברים.
-  // אם לראשון יש ברקוד — נשאר. אחרת לוקחים את הראשון בקבוצה שיש לו ברקוד.
   if (!first.barcode || !String(first.barcode).trim()) {
     const memberWithBarcode = memberProducts.find(p => p.barcode && String(p.barcode).trim());
     if (memberWithBarcode) {
@@ -913,11 +961,9 @@ async function mergeGroup(groupIdx) {
     }
   }
 
-  // הסרת השאר
   const idsToRemove = g.product_ids.filter(id => id !== first.id);
   currentInvoice.products = currentInvoice.products.filter(p => !idsToRemove.includes(p.id));
 
-  // הסרת הקבוצה
   suggestedGroups.splice(groupIdx, 1);
   dirty = true;
   renderInvoiceEditor();
@@ -972,14 +1018,12 @@ async function loadHistory() {
     if (historyFilter.q) params.set('q', historyFilter.q);
     const { invoices: allInvoices } = await api(`/api/invoices?${params}`);
 
-    // Build supplier list (unique, sorted)
     const supplierSet = new Set();
     allInvoices.forEach(inv => {
       if (inv.supplier && inv.supplier.trim()) supplierSet.add(inv.supplier.trim());
     });
     const supplierList = [...supplierSet].sort((a, b) => a.localeCompare(b, 'he'));
 
-    // Inject supplier dropdown if not yet there
     let supplierFilter = $('#supplier-filter');
     if (!supplierFilter) {
       const filterPills = document.querySelector('#tab-history .filter-pills');
@@ -1000,14 +1044,12 @@ async function loadHistory() {
       }
     }
 
-    // Update options if changed
     if (supplierFilter) {
       const currentVal = historyFilter.supplier;
       supplierFilter.innerHTML = `<option value="">— כל הספקים —</option>` +
         supplierList.map(s => `<option value="${escapeAttr(s)}" ${s === currentVal ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
     }
 
-    // Apply supplier filter
     const invoices = historyFilter.supplier
       ? allInvoices.filter(inv => (inv.supplier || '').trim() === historyFilter.supplier)
       : allInvoices;
@@ -1168,14 +1210,13 @@ async function openBarcodeScanner(productId) {
 
     $('#barcode-status').textContent = 'מכוון את הברקוד למסגרת';
     barcodeReader.decodeFromVideoDevice(rear.deviceId, 'barcode-video', (result, err) => {
-      // אם הסורק נסגר באמצע — לא לעבד תוצאות
       if (!barcodeReader || !activeBarcodeProductId) return;
 
       if (result) {
         const code = result.getText();
         if (code && code !== lastScannedCode) {
           lastScannedCode = code;
-          setTimeout(() => { lastScannedCode = null; }, 1500); // prevent re-scan flood
+          setTimeout(() => { lastScannedCode = null; }, 1500);
 
           updateProductField(activeBarcodeProductId, 'barcode', code);
           const card = document.querySelector(`.product-card[data-pid="${activeBarcodeProductId}"]`);
@@ -1183,17 +1224,14 @@ async function openBarcodeScanner(productId) {
           if (input) input.value = code;
           if (navigator.vibrate) navigator.vibrate(80);
 
-          // Continuous mode: jump to next product without barcode
           const nextPid = findNextEmptyBarcode(activeBarcodeProductId);
           if (nextPid) {
             activeBarcodeProductId = nextPid;
             $('#barcode-status').textContent = `✓ ${code.slice(0, 12)} — סורק את הבא...`;
             updateScanQueueLabel();
-            // Briefly highlight which product is next
             const nextCard = document.querySelector(`.product-card[data-pid="${nextPid}"]`);
             if (nextCard) nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
           } else {
-            // No more empty barcodes — close
             closeBarcodeScanner();
             toast(`ברקוד אחרון נסרק: ${code}`, 'success');
           }
@@ -1210,7 +1248,6 @@ let lastScannedCode = null;
 function findNextEmptyBarcode(currentId) {
   const products = currentInvoice?.products || [];
   const currentIdx = products.findIndex(p => p.id === currentId);
-  // Look forward from current position, wrap around
   for (let offset = 1; offset <= products.length; offset++) {
     const idx = (currentIdx + offset) % products.length;
     if (idx === currentIdx) break;
@@ -1350,11 +1387,150 @@ async function addSupplier() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// ─── Master Products management (NEW) ───────────────────────
+$('#master-products-btn')?.addEventListener('click', () => {
+  $('#master-modal').classList.remove('hidden');
+  renderMasterStatsBox();
+});
+$('#master-close')?.addEventListener('click', () => {
+  $('#master-modal').classList.add('hidden');
+});
+$('#master-upload-btn')?.addEventListener('click', () => {
+  $('#master-file-input').click();
+});
+$('#master-file-input')?.addEventListener('change', handleMasterExcelFile);
+
+function renderMasterStatsBox() {
+  const box = $('#master-stats-box');
+  if (!box) return;
+  if (masterStats.total > 0) {
+    const date = masterStats.last_import
+      ? new Date(masterStats.last_import * 1000).toLocaleString('he-IL', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : '—';
+    box.innerHTML = `
+      <div style="font-size:32px; font-weight:800; color:#1d4ed8;">${masterStats.total.toLocaleString('he-IL')}</div>
+      <div style="font-size:13px; color:#6b6b65; margin-top:4px;">מוצרים במאסטר</div>
+      <div style="font-size:11px; color:#6b6b65; margin-top:8px;">עודכן: ${date}</div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div style="font-size:14px; color:#6b6b65;">אין עדיין מוצרים במאסטר.<br>העלה קובץ אקסל כדי להתחיל.</div>
+    `;
+  }
+}
+
+async function handleMasterExcelFile(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  if (!window.XLSX) {
+    toast('ספריית האקסל לא נטענה. נסה לרענן את הדף.', 'error');
+    return;
+  }
+
+  const progressEl = $('#master-progress');
+  const fillEl = $('#master-progress-fill');
+  const textEl = $('#master-progress-text');
+  const resultEl = $('#master-result');
+  progressEl.classList.remove('hidden');
+  resultEl.innerHTML = '';
+  textEl.textContent = 'קורא את הקובץ...';
+  fillEl.style.width = '5%';
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+    if (rows.length < 2) throw new Error('הקובץ ריק או חסר כותרות');
+
+    // Match Hebrew column headers
+    const headers = rows[0].map(h => String(h || '').trim());
+    const findCol = (...names) => {
+      for (const name of names) {
+        const idx = headers.findIndex(h => h === name);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+    const colCode = findCol('קוד פריט', 'מק"ט', 'מקט');
+    const colName = findCol('שם פריט', 'תיאור');
+    const colPrice = findCol('מחיר');
+    const colCost = findCol('עלות');
+    const colBarcode = findCol('ברקוד');
+    const colStock = findCol('מלאי');
+    const colExtra = findCol('תיאור נוסף');
+    const colManufacturer = findCol('יצרן');
+    const colSeries = findCol('סדרה');
+
+    if (colBarcode === -1) throw new Error('לא נמצאה עמודת "ברקוד" בקובץ');
+    if (colName === -1) throw new Error('לא נמצאה עמודת "שם פריט" בקובץ');
+
+    const products = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.length === 0) continue;
+      products.push({
+        product_code: colCode !== -1 ? String(r[colCode] || '').trim() : null,
+        name: String(r[colName] || '').trim(),
+        customer_price: colPrice !== -1 ? Number(r[colPrice]) || 0 : 0,
+        cost_price: colCost !== -1 ? Number(r[colCost]) || 0 : 0,
+        barcode: String(r[colBarcode] || '').trim(),
+        stock: colStock !== -1 ? parseInt(r[colStock]) || 0 : 0,
+        extra_info: colExtra !== -1 ? String(r[colExtra] || '').trim() : null,
+        manufacturer: colManufacturer !== -1 ? String(r[colManufacturer] || '').trim() : null,
+        series: colSeries !== -1 ? String(r[colSeries] || '').trim() : null,
+      });
+    }
+
+    if (products.length === 0) throw new Error('לא נמצאו שורות בקובץ');
+
+    const BATCH_SIZE = 500;
+    let inserted = 0;
+    let skipped = 0;
+    const totalBatches = Math.ceil(products.length / BATCH_SIZE);
+
+    for (let i = 0; i < totalBatches; i++) {
+      const batch = products.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+      const start = i * BATCH_SIZE;
+      textEl.textContent = `מעלה ${start + batch.length} מתוך ${products.length}...`;
+      fillEl.style.width = `${((i + 1) / totalBatches) * 100}%`;
+
+      const res = await api('/api/master/import', {
+        method: 'POST',
+        body: JSON.stringify({
+          products: batch,
+          replace_all: (i === 0)
+        })
+      });
+      inserted += res.inserted || 0;
+      skipped += res.skipped || 0;
+    }
+
+    textEl.textContent = '✓ הסתיים';
+    resultEl.innerHTML = `
+      <div style="background:#d1fae5; border:1px solid #6ee7b7; padding:12px; border-radius:10px; font-size:13px; margin-top:12px;">
+        <strong>✅ הועלו ${inserted.toLocaleString('he-IL')} מוצרים</strong>
+        ${skipped > 0 ? `<br><span style="color:#6b6b65;">דולגו ${skipped} שורות (ברקוד לא תקין או שם חסר)</span>` : ''}
+      </div>
+    `;
+    await loadMasterStats();
+    renderMasterStatsBox();
+    toast('המאסטר עודכן בהצלחה', 'success');
+  } catch (err) {
+    resultEl.innerHTML = `
+      <div class="alert-error" style="margin-top:12px;">${SVG.alert}<span>${err.message}</span></div>
+    `;
+    textEl.textContent = '';
+    fillEl.style.width = '0%';
+  }
+}
+
 // ─── Job monitor (live progress) ────────────────────────────
 let jobPollInterval = null;
 
 function showJobMonitor(jobId, supplierName) {
-  // Create modal
   let modal = document.getElementById('job-monitor-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -1393,7 +1569,6 @@ function showJobMonitor(jobId, supplierName) {
   document.getElementById('job-monitor-close').style.display = 'none';
   document.getElementById('job-done-btn').style.display = 'none';
 
-  // Start polling
   if (jobPollInterval) clearInterval(jobPollInterval);
   pollJobStatus(jobId);
   jobPollInterval = setInterval(() => pollJobStatus(jobId), 1500);
@@ -1409,7 +1584,6 @@ async function pollJobStatus(jobId) {
     const closeBtn = document.getElementById('job-monitor-close');
     const doneBtn = document.getElementById('job-done-btn');
 
-    // Update progress bar
     const total = data.total_count || 0;
     const idx = data.current_idx || 0;
     if (total > 0) {
@@ -1418,7 +1592,6 @@ async function pollJobStatus(jobId) {
     }
     text.textContent = `${idx} / ${total}`;
 
-    // Update status pill
     if (data.status === 'pending') {
       pill.textContent = '⏳ ממתין למחשב פנוי...';
       pill.className = 'job-status-pill';
@@ -1443,7 +1616,6 @@ async function pollJobStatus(jobId) {
       loadHistory();
     }
 
-    // Update log
     if (Array.isArray(data.log)) {
       logEl.innerHTML = data.log.slice(-200).map(e => `
         <div class="job-log-line">
@@ -1453,9 +1625,7 @@ async function pollJobStatus(jobId) {
       `).join('');
       logEl.scrollTop = logEl.scrollHeight;
     }
-  } catch (e) {
-    // Ignore transient errors
-  }
+  } catch (e) {}
 }
 
 function closeJobMonitor() {
@@ -1479,7 +1649,7 @@ function isIOS() {
 }
 
 function showInstallBanner() {
-  if (isStandalone()) return; // already installed
+  if (isStandalone()) return;
   if (sessionStorage.getItem(INSTALL_DISMISSED_KEY)) return;
   $('#install-banner').classList.remove('hidden');
 }
@@ -1498,7 +1668,6 @@ window.addEventListener('appinstalled', () => {
 
 $('#install-btn')?.addEventListener('click', async () => {
   if (deferredInstallPrompt) {
-    // Chrome/Android — native prompt
     deferredInstallPrompt.prompt();
     const { outcome } = await deferredInstallPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -1506,7 +1675,6 @@ $('#install-btn')?.addEventListener('click', async () => {
     }
     deferredInstallPrompt = null;
   } else if (isIOS()) {
-    // iOS — show manual instructions
     $('#ios-install-modal').classList.remove('hidden');
   } else {
     toast('כדי להתקין: פתח בדפדפן ובחר "התקן אפליקציה" מהתפריט', '');
@@ -1522,7 +1690,6 @@ $('#ios-install-close')?.addEventListener('click', () => {
   $('#ios-install-modal').classList.add('hidden');
 });
 
-// On iOS — show banner immediately (no beforeinstallprompt support)
 if (isIOS() && !isStandalone()) {
   setTimeout(showInstallBanner, 2000);
 }
