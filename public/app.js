@@ -15,6 +15,9 @@ let barcodeReader = null;        // ZXing reader instance
 let activeBarcodeProductId = null;
 let masterStats = { total: 0, last_import: null };  // master products stats
 
+// ─── Constants ───────────────────────────────────────────────
+const VAT_RATE = 0.18;  // מע"מ בישראל — 18% (נכון ל-2026). לשינוי, עדכן רק כאן.
+
 // ─── Helpers ─────────────────────────────────────────────────
 const $  = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -525,8 +528,11 @@ function renderInvoiceEditor() {
           <div>
             <label>עלות</label>
             <div class="input-wrap">
-              <input type="number" step="0.01" class="has-currency" data-field="cost_price" value="${cost || ''}" ${isReadOnly ? 'readonly' : ''} />
+              <input type="number" step="0.01" class="has-currency cost-input" data-field="cost_price" value="${cost || ''}" ${isReadOnly ? 'readonly' : ''} />
               <span class="currency-symbol">${cur}</span>
+            </div>
+            <div class="cost-with-vat" style="font-size:11px; color:#6b6b65; margin-top:4px; text-align:center;">
+              ${cost > 0 ? `כולל מע״מ: ${cur}${(cost * (1 + VAT_RATE)).toFixed(2)}` : ''}
             </div>
           </div>
           <div>
@@ -864,6 +870,12 @@ function refreshProductCard(pid) {
   card.classList.toggle('has-price', hasPrice);
   const custInput = card.querySelector('.customer-price');
   if (custInput) custInput.classList.toggle('filled', hasPrice);
+
+  // Update VAT-inclusive cost label
+  const vatEl = card.querySelector('.cost-with-vat');
+  if (vatEl) {
+    vatEl.textContent = cost > 0 ? `כולל מע״מ: ${cur}${(cost * (1 + VAT_RATE)).toFixed(2)}` : '';
+  }
 
   let markupEl = card.querySelector('.product-markup');
   if (cost > 0 && cust > 0) {
