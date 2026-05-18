@@ -15,6 +15,10 @@ let barcodeReader = null;        // ZXing reader instance
 let activeBarcodeProductId = null;
 let masterStats = { total: 0, last_import: null };  // master products stats
 
+// ─── Manual merge selection ──────────────────────────────────
+let mergeSelectionMode = false;         // האם אנחנו במצב בחירת מוצרים לאיחוד ידני
+let selectedProductIds = new Set();     // ids של מוצרים שנבחרו לאיחוד
+
 // ─── Constants ───────────────────────────────────────────────
 const VAT_RATE = 0.18;  // מע"מ בישראל — 18% (נכון ל-2026). לשינוי, עדכן רק כאן.
 
@@ -514,8 +518,19 @@ function renderInvoiceEditor() {
     }
 
 
+    const isSelectedForMerge = selectedProductIds.has(p.id);
     const cardHtml = `
-      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.print_only ? 'is-print-only' : ''} ${p.master_match ? 'has-master-match' : ''}" data-pid="${p.id}">
+      <div class="product-card ${hasPrice ? 'has-price' : ''} ${p.error_message ? 'has-error' : ''} ${p.is_new ? 'is-new' : 'is-existing'} ${inGroup ? 'in-group' : ''} ${p.print_only ? 'is-print-only' : ''} ${p.master_match ? 'has-master-match' : ''} ${isSelectedForMerge ? 'selected-for-merge' : ''}" data-pid="${p.id}" style="${isSelectedForMerge ? 'border:2px solid #1d4ed8; box-shadow:0 0 0 3px rgba(29,78,216,0.15);' : ''}">
+        ${(mergeSelectionMode && !isReadOnly) ? `
+          <div class="merge-checkbox-row" data-merge-toggle="${p.id}" style="background:${isSelectedForMerge ? '#dbeafe' : '#f5f5f0'}; padding:8px 12px; margin:-12px -12px 10px -12px; border-radius:10px 10px 0 0; display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;">
+            <div style="width:22px; height:22px; border:2px solid ${isSelectedForMerge ? '#1d4ed8' : '#9ca3af'}; border-radius:6px; background:${isSelectedForMerge ? '#1d4ed8' : '#fff'}; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${isSelectedForMerge ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+            </div>
+            <span style="font-size:13px; font-weight:${isSelectedForMerge ? '600' : '500'}; color:${isSelectedForMerge ? '#1e3a8a' : '#6b6b65'};">
+              ${isSelectedForMerge ? '✓ נבחר לאיחוד' : 'בחר לאיחוד'}
+            </span>
+          </div>
+        ` : ''}
         ${p.error_message ? `
           <div class="product-error-banner">
             ${SVG.alert}
@@ -731,11 +746,35 @@ function renderInvoiceEditor() {
         ` : ''}
       </div>
     ` : ''}
-    ${(!isReadOnly && matchedWithPriceAvailable > 0) ? `
+    ${(!isReadOnly && matchedWithPriceAvailable > 0 && !mergeSelectionMode) ? `
       <button id="fill-prices-from-master" style="width:100%; background:#10b981; color:#fff; border:none; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:10px; display:flex; align-items:center; justify-content:center; gap:8px;">
         <span>💰</span>
         <span>מלא ${matchedWithPriceAvailable} מחירים מהקופה</span>
       </button>
+    ` : ''}
+    ${(!isReadOnly && products.length >= 2) ? `
+      <div class="merge-toolbar" style="display:flex; gap:8px; margin-bottom:10px;">
+        ${mergeSelectionMode ? `
+          <button id="merge-cancel-btn" style="background:transparent; color:#6b6b65; border:1px solid #e5e3dc; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
+            בטל
+          </button>
+          <button id="merge-confirm-btn" ${selectedProductIds.size < 2 ? 'disabled' : ''} style="flex:1; background:${selectedProductIds.size >= 2 ? '#1d4ed8' : '#c7c7c0'}; color:#fff; border:none; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:700; cursor:${selectedProductIds.size >= 2 ? 'pointer' : 'not-allowed'}; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span>${selectedProductIds.size >= 2 ? `אחד ${selectedProductIds.size} נבחרים` : 'בחר לפחות 2'}</span>
+          </button>
+        ` : `
+          <button id="merge-start-btn" style="width:100%; background:#fff; color:#1d4ed8; border:1.5px solid #c7d2fe; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span>איחוד מוצרים ידני</span>
+          </button>
+        `}
+      </div>
     ` : ''}
     <div class="products-list" id="products-list">${productCards}</div>
     ${isReadOnly ? '' : `<button class="add-product-btn" id="add-product">${SVG.plus}<span>הוסף מוצר ידנית</span></button>`}
@@ -772,6 +811,8 @@ function renderInvoiceEditor() {
     suggestedGroups = [];
     pages = [];
     window._invoiceFilterText = '';
+    mergeSelectionMode = false;
+    selectedProductIds.clear();
     renderNewTab();
   };
 
@@ -937,6 +978,42 @@ function renderInvoiceEditor() {
       };
     }
 
+    // ── Manual merge: start / cancel / toggle / confirm ──
+    const mergeStartBtn = $('#merge-start-btn');
+    if (mergeStartBtn) {
+      mergeStartBtn.onclick = () => {
+        mergeSelectionMode = true;
+        selectedProductIds.clear();
+        renderInvoiceEditor();
+      };
+    }
+    const mergeCancelBtn = $('#merge-cancel-btn');
+    if (mergeCancelBtn) {
+      mergeCancelBtn.onclick = () => {
+        mergeSelectionMode = false;
+        selectedProductIds.clear();
+        renderInvoiceEditor();
+      };
+    }
+    // Toggle checkbox on each card
+    $$('[data-merge-toggle]').forEach(el => {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        const pid = el.dataset.mergeToggle;
+        if (selectedProductIds.has(pid)) {
+          selectedProductIds.delete(pid);
+        } else {
+          selectedProductIds.add(pid);
+        }
+        renderInvoiceEditor();
+      };
+    });
+    // Confirm manual merge
+    const mergeConfirmBtn = $('#merge-confirm-btn');
+    if (mergeConfirmBtn && !mergeConfirmBtn.disabled) {
+      mergeConfirmBtn.onclick = () => mergeManualSelection();
+    }
+
     $('#save-draft').onclick = () => saveInvoice('draft');
     if ($('#mark-ready')) $('#mark-ready').onclick = () => saveInvoice('ready');
   }
@@ -944,6 +1021,8 @@ function renderInvoiceEditor() {
   if ($('#back-list')) $('#back-list').onclick = () => {
     currentInvoice = null;
     window._invoiceFilterText = '';
+    mergeSelectionMode = false;
+    selectedProductIds.clear();
     activeTab = 'history';
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'history'));
     $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-history'));
@@ -1116,6 +1195,76 @@ async function mergeGroup(groupIdx) {
   dirty = true;
   renderInvoiceEditor();
   toast(`אוחדו ${memberProducts.length} שורות`, 'success');
+}
+
+async function mergeManualSelection() {
+  const selectedIds = Array.from(selectedProductIds);
+  if (selectedIds.length < 2) {
+    toast('צריך לבחור לפחות 2 מוצרים', 'error');
+    return;
+  }
+
+  const memberProducts = currentInvoice.products.filter(p => selectedIds.includes(p.id));
+  if (memberProducts.length < 2) {
+    toast('המוצרים שנבחרו לא נמצאו', 'error');
+    return;
+  }
+
+  // שואלים את ה-AI על שם מאוחד
+  let suggestedName = memberProducts[0].name || '';
+  showLoading('AI מציע שם מאוחד...');
+  try {
+    const res = await api('/api/unify-names', {
+      method: 'POST',
+      body: JSON.stringify({
+        names: memberProducts.map(p => p.name || '').filter(Boolean)
+      })
+    });
+    if (res?.unified_name) suggestedName = res.unified_name;
+  } catch (e) {
+    // אם הקריאה נכשלה — fallback לשם הראשון, ממשיכים
+  } finally {
+    hideLoading();
+  }
+
+  const newName = prompt('שם המוצר המאוחד:\n(ה-AI הציע — תוכל לאשר או לערוך)', suggestedName);
+  if (newName === null) return; // ביטול
+  if (!newName.trim()) {
+    toast('שם לא יכול להיות ריק', 'error');
+    return;
+  }
+
+  // חישוב כמות ועלות מאוחדים
+  const totalQty = memberProducts.reduce((s, p) => s + (Number(p.quantity) || 1), 0);
+  const totalCost = memberProducts.reduce((s, p) => s + (Number(p.cost_price) || 0) * (Number(p.quantity) || 1), 0);
+  const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
+
+  // המוצר המאוחד יחליף את הראשון מבין הנבחרים (לפי סדר ההופעה בחשבונית)
+  const productsByOrder = currentInvoice.products.filter(p => selectedIds.includes(p.id));
+  const first = productsByOrder[0];
+  first.name = newName.trim();
+  first.quantity = totalQty;
+  first.cost_price = Math.round(avgCost * 100) / 100;
+  first.merged_from = JSON.stringify(selectedIds);
+
+  // ברקוד: שומרים ברקוד של אחד מהמוצרים (לא ממציאים)
+  if (!first.barcode || !String(first.barcode).trim()) {
+    const memberWithBarcode = memberProducts.find(p => p.barcode && String(p.barcode).trim());
+    if (memberWithBarcode) {
+      first.barcode = memberWithBarcode.barcode;
+    }
+  }
+
+  // הסרת השאר
+  const idsToRemove = selectedIds.filter(id => id !== first.id);
+  currentInvoice.products = currentInvoice.products.filter(p => !idsToRemove.includes(p.id));
+
+  // יציאה ממצב בחירה ואיפוס
+  mergeSelectionMode = false;
+  selectedProductIds.clear();
+  dirty = true;
+  renderInvoiceEditor();
+  toast(`אוחדו ${memberProducts.length} מוצרים`, 'success');
 }
 
 async function saveInvoice(targetStatus) {
